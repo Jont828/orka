@@ -1,0 +1,383 @@
+{
+  "duration": 810.7666,
+  "chapters": [
+    {
+      "key": "orka",
+      "label": "What Orka is",
+      "subtitle": "A Kubernetes-native platform that runs container and AI-agent Tasks",
+      "start": 0.0,
+      "browser": "slide-orka",
+      "end": 23.371,
+      "segment": "intro",
+      "part": "intro"
+    },
+    {
+      "key": "shepherd",
+      "label": "The PR shepherd",
+      "subtitle": "One scheduled Task: a gate every 15 minutes, an agent only when needed",
+      "start": 23.371,
+      "browser": [
+        "slide-shepherd@12",
+        "orka-prod@start~report"
+      ],
+      "end": 52.359,
+      "segment": "intro",
+      "part": "intro"
+    },
+    {
+      "key": "handles",
+      "label": "What it handles",
+      "subtitle": "Each capability is a step of the pr-shepherd skill",
+      "start": 52.359,
+      "browser": "slide-steps",
+      "end": 73.211,
+      "segment": "intro",
+      "part": "intro"
+    },
+    {
+      "key": "demos",
+      "label": "How the demos run",
+      "subtitle": "A copy of the Task, every 5 minutes, on sandbox PRs inside the fork",
+      "start": 73.211,
+      "browser": "orka-run-live@start~run",
+      "end": 88.468,
+      "segment": "intro",
+      "part": "intro"
+    },
+    {
+      "key": "guardrails",
+      "label": "What it never does",
+      "subtitle": "It acts as the author, within limits, and reports everything",
+      "start": 88.468,
+      "browser": "slide-guardrails",
+      "end": 103.6333,
+      "segment": "intro",
+      "part": "intro"
+    },
+    {
+      "key": "setup",
+      "label": "Setup",
+      "subtitle": "PR #11 in the fork: CodeRabbit says M and G use powers of 1024",
+      "start": 103.6333,
+      "browser": [
+        "opener-comments",
+        "pr-before@start~start+9",
+        "pr-before@checks-7.8~checks"
+      ],
+      "end": 129.4333,
+      "segment": "comments",
+      "part": "comments"
+    },
+    {
+      "key": "notice",
+      "label": "The gate notices",
+      "subtitle": "The head is new and quiet, so a review run starts",
+      "start": 129.4333,
+      "browser": "log-run2-c@start~work",
+      "end": 139.6273,
+      "segment": "comments",
+      "part": "comments"
+    },
+    {
+      "key": "work",
+      "label": "The agent works",
+      "subtitle": "It checks the claim on evidence, reproduces it, fixes it and replies",
+      "start": 139.6273,
+      "browser": "log-run2-c@work~end",
+      "end": 176.4323,
+      "segment": "comments",
+      "part": "comments"
+    },
+    {
+      "key": "result",
+      "label": "Result",
+      "subtitle": "One signed fix commit; CodeRabbit verified it and resolved its own thread",
+      "start": 176.4323,
+      "browser": [
+        "pr-reviewed@start~commit",
+        "pr-reviewed@diff~end"
+      ],
+      "end": 205.6953,
+      "segment": "comments",
+      "part": "comments"
+    },
+    {
+      "key": "production",
+      "label": "In production",
+      "subtitle": "The same step, live upstream: ai-dynamo/dynamo#18618",
+      "start": 205.6953,
+      "browser": "upstream-prod",
+      "end": 224.5333,
+      "segment": "comments",
+      "part": "comments"
+    },
+    {
+      "key": "setup",
+      "label": "Setup",
+      "subtitle": "A change lands on orka-demo/base and edits the same README line as PR #11",
+      "start": 224.5333,
+      "browser": [
+        "opener-conflict",
+        "pr-conflict"
+      ],
+      "end": 253.0323,
+      "segment": "conflict",
+      "part": "conflict"
+    },
+    {
+      "key": "notice",
+      "label": "The gate notices",
+      "subtitle": "Within one slot (15 minutes, 5 in the demo): a new merge conflict",
+      "start": 253.0323,
+      "browser": "log-run1-a@start~work",
+      "end": 267.7883,
+      "segment": "conflict",
+      "part": "conflict"
+    },
+    {
+      "key": "work",
+      "label": "The agent works",
+      "subtitle": "Backup, rebase, resolve, validate, then push with a lease",
+      "start": 267.7883,
+      "browser": "log-run1-a@work~end",
+      "end": 298.4913,
+      "segment": "conflict",
+      "part": "conflict"
+    },
+    {
+      "key": "result",
+      "label": "Result",
+      "subtitle": "Conflict gone: both README lines kept, commits re-signed, old head backed up",
+      "start": 298.4913,
+      "browser": "pr-rebased@start~checks",
+      "end": 325.3666,
+      "segment": "conflict",
+      "part": "conflict"
+    },
+    {
+      "key": "setup",
+      "label": "Setup",
+      "subtitle": "PR #12 adds a duration parser; three of its own tests fail in CI",
+      "start": 325.3666,
+      "browser": [
+        "opener-ci_ours",
+        "ci-ours-before"
+      ],
+      "end": 352.1456,
+      "segment": "ci_ours",
+      "part": "ci"
+    },
+    {
+      "key": "notice",
+      "label": "The gate notices",
+      "subtitle": "Once CI on that head has finished, the next slot hands the failure over",
+      "start": 352.1456,
+      "browser": "log-3a@start~work",
+      "end": 369.5866,
+      "segment": "ci_ours",
+      "part": "ci"
+    },
+    {
+      "key": "work",
+      "label": "The agent works",
+      "subtitle": "Whose bug is it? This PR's: reproduce, fix, validate, push, wait for CI",
+      "start": 369.5866,
+      "browser": "log-3a@work~end",
+      "end": 412.5236,
+      "segment": "ci_ours",
+      "part": "ci"
+    },
+    {
+      "key": "result",
+      "label": "Result",
+      "subtitle": "One signed CI-fix commit; CI is green and nothing needs the author",
+      "start": 412.5236,
+      "browser": "ci-ours-after",
+      "end": 440.6999,
+      "segment": "ci_ours",
+      "part": "ci"
+    },
+    {
+      "key": "setup",
+      "label": "Setup",
+      "subtitle": "A base commit breaks a test; docs-only PR #13 branches after it and fails CI",
+      "start": 440.6999,
+      "browser": [
+        "opener-ci_base",
+        "ci-base-before"
+      ],
+      "end": 479.0539,
+      "segment": "ci_base",
+      "part": "ci"
+    },
+    {
+      "key": "fix",
+      "label": "Main gets fixed",
+      "subtitle": "367a899 restores the tokens; PR #13 stays red because CI tests its own head",
+      "start": 479.0539,
+      "browser": "ci-base-fix",
+      "end": 487.3629,
+      "segment": "ci_base",
+      "part": "ci"
+    },
+    {
+      "key": "notice",
+      "label": "The gate notices",
+      "subtitle": "The next slot hands the failed check over",
+      "start": 487.3629,
+      "browser": "log-3b@start~work",
+      "end": 501.2629,
+      "segment": "ci_base",
+      "part": "ci"
+    },
+    {
+      "key": "work",
+      "label": "The agent works",
+      "subtitle": "A README change can't break dump_docs: it finds the fix on the base and rebases",
+      "start": 501.2629,
+      "browser": "log-3b@work~end",
+      "end": 544.2499,
+      "segment": "ci_base",
+      "part": "ci"
+    },
+    {
+      "key": "result",
+      "label": "Result",
+      "subtitle": "Rebased onto the fix with a backup; CI green; the report cites the fixing commit",
+      "start": 544.2499,
+      "browser": "ci-base-after",
+      "end": 573.2999,
+      "segment": "ci_base",
+      "part": "ci"
+    },
+    {
+      "key": "setup",
+      "label": "Setup",
+      "subtitle": "PR #11's failed check is a Dynamo bot job that has no token in a fork",
+      "start": 573.2999,
+      "browser": [
+        "opener-ci_infra",
+        "pr-before@checks~end"
+      ],
+      "end": 589.0979,
+      "segment": "ci_infra",
+      "part": "ci"
+    },
+    {
+      "key": "notice",
+      "label": "The gate notices",
+      "subtitle": "The same run as demo 2 was also given the failed check",
+      "start": 589.0979,
+      "browser": "log-run1-b@start~work",
+      "end": 596.2139,
+      "segment": "ci_infra",
+      "part": "ci"
+    },
+    {
+      "key": "work",
+      "label": "The agent works",
+      "subtitle": "It reads the failing job's log and compares it with what the PR changes",
+      "start": 596.2139,
+      "browser": "log-run1-b@work~end",
+      "end": 614.6689,
+      "segment": "ci_infra",
+      "part": "ci"
+    },
+    {
+      "key": "result",
+      "label": "Result",
+      "subtitle": "Cause 3, High confidence: reported with the evidence, no commit for it",
+      "start": 614.6689,
+      "browser": "pr-rebased@checks~end",
+      "end": 628.4666,
+      "segment": "ci_infra",
+      "part": "ci"
+    },
+    {
+      "key": "setup",
+      "label": "Setup",
+      "subtitle": "A PR head with new commits from the author, quiet for an hour (no wait in the demo)",
+      "start": 628.4666,
+      "browser": [
+        "opener-review",
+        "pr-rebased@start~start+5"
+      ],
+      "end": 642.4666,
+      "segment": "review",
+      "part": "review"
+    },
+    {
+      "key": "notice",
+      "label": "The gate notices",
+      "subtitle": "PR #11's rebased head is new and quiet: a review is due",
+      "start": 642.4666,
+      "browser": "log-run2-rs@start~work",
+      "end": 649.5826,
+      "segment": "review",
+      "part": "review"
+    },
+    {
+      "key": "work",
+      "label": "The agent works",
+      "subtitle": "Dynamo's rubric, a codeowner's checks, every fix confirmed by a fresh subagent",
+      "start": 649.5826,
+      "browser": "log-run2-rs@work~end",
+      "end": 692.4916,
+      "segment": "review",
+      "part": "review"
+    },
+    {
+      "key": "result",
+      "label": "Result",
+      "subtitle": "One brief: what the PR does, its risk, where to look, the decisions left",
+      "start": 692.4916,
+      "browser": [
+        "pr-reviewed@brief~diff",
+        "orka-result-2@start~schedule"
+      ],
+      "end": 723.1266,
+      "segment": "review",
+      "part": "review"
+    },
+    {
+      "key": "quiet",
+      "label": "Afterwards",
+      "subtitle": "The shepherd's own fix doesn't start another review",
+      "start": 723.1266,
+      "browser": "orka-result-2@schedule~end",
+      "end": 731.7976,
+      "segment": "review",
+      "part": "review"
+    },
+    {
+      "key": "production",
+      "label": "In production",
+      "subtitle": "Shadow mode: the brief goes into the report until the author turns it live",
+      "start": 731.7976,
+      "browser": "orka-prod@report~end",
+      "end": 754.4666,
+      "segment": "review",
+      "part": "review"
+    },
+    {
+      "key": "report",
+      "label": "The 2-hourly report",
+      "subtitle": "Production, Nov 17 at 18:00: four upstream PRs, all green, all waiting on review",
+      "start": 754.4666,
+      "browser": "prod-report",
+      "end": 785.7336,
+      "segment": "wrapup",
+      "part": "wrapup"
+    },
+    {
+      "key": "recap",
+      "label": "Recap",
+      "subtitle": "Three sandbox PRs; after each setup, nobody touched them",
+      "start": 785.7336,
+      "browser": "outro-summary@24",
+      "end": 810.7666,
+      "segment": "wrapup",
+      "part": "wrapup"
+    }
+  ]
+}

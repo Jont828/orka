@@ -1,0 +1,341 @@
+PR watch at Tue, Nov 10, 22:33 EST: review requested (SHEPHERD_MODE=review), so the shepherd is starting a review run.
+- #17372 (head 279deed): no merge conflict; CI running (1 of 126 checks pending); review due (full review)
+[bootstrap 22:33:07] installing gh 2.103.3, uv 0.13.7, copilot 1.0.105
+[bootstrap 22:33:21] configuring git and cloning Jont828/dynamo
+[bootstrap 22:33:46] running Copilot CLI (claude-opus-5.5, effort xhigh); report follows
+
+===== PR SHEPHERD REPORT =====
+Starting with the DRY RUN environment checks.
+
+All environment checks pass. Now triaging PR #17372.
+
+Large docs PR (137 files, +16k). Gathering CI, reviews, threads, and comments.
+
+All 14 CodeRabbit threads are resolved and the review body has no nitpick/outside-diff items. Checking the CodeRabbit summary comment and human comments.
+
+CI: 91 pass, 1 pending (`xpu-ci-vllm / test-xpu`), no failures. Now checking out the head and scoping the diff for the self-review.
+
+Base is 1 commit behind main; mergeable. Reading the review rubric (pr-checklist, dynamo-docs skill) and the latest commits.
+
+Note: latest commit keeps the DGD template pages (description says they're removed), and migrated pages remain while READMEs were restored. Reading the rubric now.
+
+Running the PR's own tests and docs lint while I inspect the diff for key areas.
+
+Tests (55) pass; docs lint 0 errors (3 new advisory NAV warnings for the kept DGD template pages). Looking at component sizes, redirects, and the migrated pages that now duplicate restored READMEs.
+
+Node 22 is present, so the customizer tests actually ran. Delegating a focused bug hunt on the TS components (≈5k lines) while I review nav, redirects, and content.
+
+All docs CI gates are green at this head. Spot-checking the inbound link edits on modified pages.
+
+Translations are consistent. Sampling an example page and the authoring contract while the component review runs.
+
+Ten vLLM XPU DRA bundles lack the prerequisite. Checking whether their descriptions collide with CUDA siblings in the same selector row.
+
+Confirmed: XPU variants share their CUDA sibling's description in 16 rows (5 Kubernetes, 11 local). Sending the P2 prerequisites finding to a fresh agent to try to refute it.
+
+While that runs, I'm preparing the candidate fix locally (shadow mode: diff only, never pushed).
+
+NOT REFUTED — The catalog explicitly requires a prerequisite when setup is needed and permits placing it inside the applicable source bundle (`docs/fern/pages/recipes/examples/_catalog/README.md:8-14`). The affected vLLM manifests declare `resource.k8s.io/v1` and `deviceClassName: gpu.intel.com` (`examples/backends/vllm/deploy/xpu/agg_xpu_dra.yaml:5-14`), matching the Intel DRA guide’s stated requirements (`docs/fern/pages/kubernetes/model-deployment/deploy-on-intel-gpus.mdx:22-35`). `ExampleSelector` only selects/renders variants (`docs/fern/components/ExampleSelector.tsx:65-126`); the customizer detects DRA solely to display “DRA claim” (`docs/fern/components/deployment-customizer.ts:920-925`, `docs/fern/components/DeploymentCustomizer.tsx:705`) and does not generate a setup link. The manifest’s XPU README has prerequisites (`examples/backends/vllm/deploy/xpu/README.md:24-39`), but it is not embedded or linked by those pages. The catalog tests check page/card/embed consistency, not prerequisite coverage (`docs/tests/test_examples_catalog.py:40-100`).The XPU finding was not refuted. Next I'm capturing the diff and having a fresh subagent confirm its scope.
+
+Validation passed: 55 tests, 0 docs-lint errors, and pre-commit clean. A fresh agent is now confirming that the diff fixes exactly the listed findings.
+
+I found five bugs that meet the bar: four in `deployment-customizer.ts` and one in `DeploymentCustomizer.tsx`. I modified no files and created no scratch files. Every reproduction ran as inline `node --experimental-strip-types --no-warnings --input-type=module -e` using the test's settings shape.
+
+Nothing to report in these areas:
+- **Catalog filters:** they match the documented semantics (OR within a row, AND across rows, platform:backend pairs).
+- **SSR and hydration:** `window` is only read in effects and handlers.
+- **`dangerouslySetInnerHTML`:** used only for static CSS.
+- **Other checks:** the DGDR jsonpath fields, the DGD Ready wait and port 8000 are correct.
+
+### 1. P1 · High — generated steps break the kvcr scripts by running `envsubst` on every `$` variable
+`deployment-customizer.ts:1579`
+- The code correctly works out `templateVars` without looking inside block scalars (1570–1574), but then runs bare `envsubst < agg.yaml`.
+- With no format argument, GNU envsubst replaces every `$VAR`, so the runtime shell variables in the container scripts become empty.
+- The repo's own `kvcr/deploy.sh:98-107` passes an explicit variable list for exactly this reason.
+- Embedded in `kvcr.mdx`.
+
+**Repro:** generated steps for `examples/backends/vllm/deploy/kvcr/agg.yaml`, then those steps emulated (no `envsubst` binary here):
+```
+envsubst < agg.yaml | kubectl apply --namespace "$NAMESPACE" -f -
+44: 'state_namespace=$DYN_NAMESPACE' -> 'state_namespace='
+59: 'if [ "$POD_INDEX" = "0" ]; then' -> 'if [ "" = "0" ]; then'
+132: --kv-transfer-config "$kv_transfer_config" -> ""
+```
+`agg-memory-service.yaml` loses `PYTHONPATH`, `KVCR_READY_TIMEOUT_SECONDS` and `kv_transfer_config` the same way.
+
+**Fix:**
+```diff
+- `envsubst < ${manifestFile.name} | ...`
++ `envsubst '${templateVars.map(n => `\${${n}}`).join(" ")}' < ${manifestFile.name} | ...`
+```
+
+### 2. P1 · High — download Job hangs when the manifest itself defines the PVC
+`deployment-customizer.ts:1662` and `1552–1558`
+- When the claim is in `info.claims`, `createPvc` is forced to false, so `model-cache.yaml` contains only the Job.
+- The steps then apply that file and wait on the Job before applying the manifest, which is what creates the PVC.
+- The Job pod stays Pending until the 60-minute timeout.
+- This happens with the default UI settings: an existing PVC selects `pvc` mode with the download Job on.
+
+**Repro:** `examples/backends/trtllm/deploy/disagg-multinode.yaml` (PVC `models` at lines 67–75, embedded in `multinode.mdx`) produces:
+```
+kubectl apply -n ns -f model-cache.yaml
+kubectl wait --for=condition=complete job/model-download -n ns --timeout=60m
+kubectl apply -n ns -f disagg-multinode.yaml
+```
+
+**Fix:** when `info.claims.includes(claim)`, apply the manifest before the Job wait, or copy that PVC document into `model-cache.yaml`.
+
+### 3. P1 · High — "Shared PVC" mode duplicates a volume mount and `HF_HOME` on the nemotron worker
+`deployment-customizer.ts:976` (`modelPvcOf`), `1259` (the `mounted` check), `1215` (`upsertEnv`)
+- The parser keeps flow mappings `{...}` as opaque scalars, so these three checks never see the worker's existing flow-style `model-cache` mount (line 137) or its `HF_HOME` entry (line 126).
+- `applyStorage` therefore adds a second mount at the same `mountPath` and a second `HF_HOME`. Kubernetes rejects duplicate `mountPath` values.
+- The download Job also writes to the PVC root, while the worker reads `subPath: nemotron-speech-cascaded-llm`.
+- The existing test only checks that some mount matches, not that `mountPath` values are unique.
+
+**Repro:** `examples/nemotron_speech_cascaded_pipeline/deploy/agg.yaml` (embedded in `audio.mdx`), storage mode `pvc`, output parsed with PyYAML:
+```
+worker main: DUP_MOUNTPATH= ['/home/dynamo/.cache/huggingface'] DUP_ENV= ['HF_HOME']
+```
+
+**Fix:** read `name` and `mountPath` from flow-style items, or skip such containers and add a note.
+
+### 4. P2 · Medium — chat smoke test sends the HF id instead of `--served-model-name`
+`deployment-customizer.ts:1619`
+- When a reader picks a model on a manifest whose served name differs from its `--model`, the generated curl uses the picked HF id.
+- The served name stays as written in the manifest, so the request fails with "model not found".
+
+**Repro:** nemotron `agg.yaml` (serves `nvidia/nemotron-3-nano`, lines 107–110) with model `meta-llama/Llama-3.1-8B-Instruct` produces `"model": "meta-llama/Llama-3.1-8B-Instruct"`, while the manifest still serves `nvidia/nemotron-3-nano`.
+
+**Fix:** use the manifest's `--served-model-name` value when it is present and unchanged.
+
+### 5. P3 · Medium — invalid Deployment names are emitted unchanged
+`DeploymentCustomizer.tsx:771–783`, about line 410
+- The name inputs only set `aria-invalid`; the value goes into `customize.names` unvalidated.
+- PVC and Secret names fall back to a default when invalid; Deployment names don't.
+- So a name like `Bad Name` reaches both the manifest (the API rejects it) and the unquoted `kubectl wait dgd/Bad Name`.
+- I didn't run this one in node; the evidence is the code path.
+
+**Fix:** pass the name through only if it matches the RFC 1123 pattern already used for `aria-invalid`.**CONFIRMED**
+
+- Exactly 10 vLLM XPU DRA bundles are covered, each with one prerequisite in the correct bundle: lines 31, 46, 58/68, 62, 70, 43, 72, 46/56, and 46 across the eight modified MDX files.
+- Link resolves to existing `docs/fern/pages/kubernetes/model-deployment/deploy-on-intel-gpus.mdx` and matches `global-planner.mdx:32`.
+- Exactly five descriptions changed: `aggregated-kv-routing.mdx:17`, `aggregated.mdx:18`, `disaggregated-kv-routing.mdx:15`, and `tracing.mdx:17-18`; IDs, labels, and targets are unchanged.
+- `git diff --stat`: only the eight expected example MDX files; no whitespace errors or unrelated changes.
+- No discrepancies found.Now run the engine with the UI's default settings.Now run the engine with UI-default settings on kvcr/agg.yaml (inline, no file writes) and emulate GNU envsubst (no SHELL-FORMAT).Reproduced with the UI defaults. Quick check of the merge-base and of other embedded manifests that are affected:**NOT REFUTED.** I ran the TS engine with the UI's default settings and it produces the deadlocking deploy steps described in the claim.
+
+**Why the defaults trigger it:**
+- **Shared PVC is the default mode.** The download Job is on by default (`DeploymentCustomizer.tsx:111-112`). Because this manifest already mounts a PVC, the default storage mode becomes "Shared PVC" (`:396`).
+- **The engine detects the claim and the model.** It reads the manifest as `modelPvc {claim:"models", mountPath:"/models"}`, with `claims:["models"]` and `models:["Qwen/Qwen3-0.6B"]`.
+- **The PVC is left out of `model-cache.yaml`.** Since the claim is defined in the manifest, `createPvc` is forced to false (`deployment-customizer.ts:1645`). The UI also greys out the "Create the PVC" checkbox in this case (`.tsx:881-882`).
+- **The steps wait before the PVC exists.** `deploySteps` waits for the Job (`:1558`) before it applies the manifest (`:1581`).
+
+**Output from running the engine** (`node --experimental-strip-types`, UI defaults, bundle off):
+```
+model-cache.yaml kinds: [ 'Job' ]
+manifest kinds: [ 'ConfigMap', 'PersistentVolumeClaim', 'DynamoGraphDeployment' ]
+kubectl apply --namespace "$NAMESPACE" -f model-cache.yaml
+kubectl wait --for=condition=complete job/model-download --namespace "$NAMESPACE" --timeout=60m
+kubectl apply --namespace "$NAMESPACE" -f disagg-multinode.yaml
+```
+The Job pod mounts PVC `models`, which doesn't exist until the last line runs. So the pod stays Pending and the wait times out after 60 minutes.
+
+**Where it shows up:** at HEAD, `multinode.mdx:27-31` embeds this file inside `ExampleSelector`, which wraps every embedded YAML block with the customizer (`ExampleSelector.tsx:119`). I scanned every manifest embedded in the examples pages, and this is the only one affected.
+
+**Bundle mode** (off by default) does not deadlock: the Job and PVC are applied together. It also emits no wait for the download Job, because `cacheFile` is undefined there.
+
+**Newly added by the PR:** yes. Neither `deployment-customizer.ts` nor `DeploymentCustomizer.tsx` exists at merge-base `79692cf5`, and blame attributes these lines to PR commit `962377416`.
+
+I deleted `/tmp/refute2` and modified nothing in the repo.**NOT REFUTED.** The claimed bug is real, and the PR adds this code.
+
+**Evidence**
+
+- **The step is emitted with no format argument.** In `docs/fern/components/deployment-customizer.ts:1570-1580`, `templateVars` leaves out block-scalar lines, but that list is only used to write the `export` lines. Line 1579 emits `` `envsubst < ${manifestFile.name} | kubectl apply ${ns} -f -` `` with no SHELL-FORMAT argument.
+- **The customizer is on for this manifest.**
+  - `kvcr.mdx:31` embeds `agg.yaml` through `<Code … language="yaml">` inside `<ExampleSelector>`.
+  - `ExampleSelector.tsx:119` wraps that content with `withDeploymentCustomizer(children)`.
+  - Nothing switches it off for KVCR. The page only points to `deploy.sh` for the memory-service variant, not for `agg.yaml`.
+- **The step is generated by default.** The manifest has `${…}` references outside block scalars (lines 19, 175, 179, 183 and 186), so `templateVars` is not empty. It only drops out if the user fills in all three values in the UI.
+- **Running it confirms the breakage.** I ran the engine with the UI default settings under `node --experimental-strip-types`. The output contains `envsubst < agg.yaml | kubectl apply --namespace "$NAMESPACE" -f -`. I then applied GNU envsubst behaviour with no format argument to that output:
+  - Line 44: `state_namespace=$DYN_NAMESPACE` became `state_namespace=`.
+  - Line 59: `[ "$POD_INDEX" = "0" ]` became `[ "" = "0" ]`.
+  - Line 132: `"$kv_transfer_config"` became `""`.
+  - Lines 46, 52-55, 64, 67, 78 and 135-138 were also blanked (the PIDs, `state_namespace` and the slot count).
+- **The repo's own script avoids this.** `examples/backends/vllm/deploy/kvcr/deploy.sh:98-107` passes an explicit variable list to `envsubst`.
+- **The sibling manifest gets the same step.** `agg-memory-service.yaml` also gets a plain `envsubst` step, with 2 bare `$` references in its body.
+
+**Is it new in the PR?** Yes. On the merge base `79692cf58`, neither `deployment-customizer.ts` nor `kvcr.mdx` exists. `ExampleSelector.tsx` and `DeploymentCustomizer.tsx` are also added by the PR, so all of this code is new; only the manifests already existed. The tests never check the envsubst output against block-scalar shell variables.
+
+I wrote no scratch files: everything ran as inline `node` scripts, so `/tmp/refute1` was never created and the repo is unchanged.**NOT REFUTED.** I ran the TypeScript engine and the claimed bug reproduces exactly.
+
+**Does the parser treat flow mappings as opaque?** Yes.
+- In `deployment-customizer.ts:251-254`, `{…}` and `[…]` become a scalar with `style: "flow"`. `child()`/`entryOf()` (lines 440-446) only look inside nodes of kind `map`, so they return null for these.
+- Probe output for the worker's nodes:
+  - volumeMount: `{kind:'scalar', style:'flow'}`
+  - env item: `{kind:'scalar', style:'flow'}`
+  - `persistentVolumeClaim`: `{kind:'scalar', style:'flow'}`
+- `analyzeManifest` therefore returns `modelPvc: None` and `claims: []`.
+
+**Is the customizer enabled, and can a reader pick "Shared PVC"?** Yes.
+- `audio.mdx:34` has `<Code src=".../agg.yaml" language="yaml">` inside `<ExampleSelector>`.
+- `ExampleSelector.tsx:119` wraps it with `withDeploymentCustomizer`, which picks up any yaml Code element (`DeploymentCustomizer.tsx:177-188`).
+- Because `modelPvc` is null, the default is "download" (`:396`, `:510`), and the "Shared PVC" chip can be selected (`:836-846`). The default output is unchanged from the source; the bug only appears after choosing PVC.
+
+**Output with `mode: "pvc"`, parsed with PyYAML:**
+```
+worker main DUP_MOUNTPATH= ['/home/dynamo/.cache/huggingface'] DUP_ENV= ['HF_HOME']
+```
+- In the diff, the existing flow-style `HF_HOME` env at line 126 and the volumeMount at line 137 each get a block-style duplicate. The added mount has no `subPath`.
+- Kubernetes rejects two volumeMounts with the same mountPath ("must be unique").
+
+**Download Job vs. worker:** the Job mounts `model-cache` at `/home/dynamo/.cache/huggingface` with no `subPath`, but the worker reads `subPath: nemotron-speech-cascaded-llm`. That part of the claim is confirmed too.
+
+**Additional finding (not in the claim):** because `claims` comes back empty, `model-cache.yaml` also emits a `PersistentVolumeClaim model-cache`, although the manifest already references that claim.
+
+**Is this new in the PR?** Yes. `deployment-customizer.ts`, `DeploymentCustomizer.tsx`, `ExampleSelector.tsx`, `audio.mdx` and the test file are all absent at merge-base `79692cf5`. `agg.yaml` is unchanged; it predates the PR (#12567). The PR's test does run PVC mode on this manifest (I didn't run pytest), but it only asserts that a matching mount exists (`any(...)`), so duplicates would pass.
+
+I ran everything through `node -e` piped into `python3 -c` and wrote no scratch files, so `/tmp/refute3` was never created. The repo is untouched.I could not refute the claim. Picking a different model leaves `--served-model-name` unchanged, but the smoke-test curl asks for the picked model's ID.
+
+**Evidence** (I ran the engine with `node --experimental-strip-types`, importing the `.ts` file directly):
+
+- **How names are found** (`deployment-customizer.ts:760-765, 959`): `--served-model-name` counts as a model flag. For `nemotron_speech_cascaded_pipeline/deploy/agg.yaml`, the detected model list `info.models` is `["nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8","nvidia/nemotron-3-nano","nvidia/magpie-tts-multilingual"]`.
+- **Only the first name is rewritten** (`:1649`): the manifest is changed by `replaceModel(lines, info.models[0], chosen)`, so the served name is never touched.
+- **The curl uses the picked ID** (`:1427`, `:1619-1624`): `effectiveModel` returns the reader's choice, and that goes straight into `"model"`.
+- **The picker is offered on this page**: `DeploymentCustomizer.tsx:581-583` shows it whenever a model was detected. `audio.mdx:34` embeds this manifest inside `ExampleSelector`, which wraps it with the customizer.
+- **Output with `meta-llama/Llama-3.1-8B-Instruct`** (its category is "text", `deployment-customizer-data.ts:78`, so the chat curl is turned on):
+  ```
+  - --model
+  - meta-llama/Llama-3.1-8B-Instruct
+  - --served-model-name
+  - nvidia/nemotron-3-nano
+  ...
+  "model": "meta-llama/Llama-3.1-8B-Instruct",
+  ```
+- **The frontend will reject it**: the worker registers under its served name (`components/src/dynamo/vllm/args.py:152-153` only falls back to `--model` when no served name is set). A request for an unregistered name gets `"Model not found"` from `lib/llm/src/http/service/openai.rs:597-604`.
+
+**How reachable it is**
+- **Default (model unchanged):** fine. The model isn't in the picker's list, so no chat curl is generated; the steps use `curl .../v1/models` instead.
+- **Bad case:** the reader picks any listed text or vision model.
+- **Other manifests:** 34 of the 94 embedded manifests use `--served-model-name`. In 29 the served name equals the detected model, so it is rewritten correctly. The other 4 (the three `gaie` manifests and `rl/slime`) use `$SERVED_MODEL_NAME` or `${MODEL_PATH}` and get no chat curl. So this repro is the only embedded manifest affected today.
+
+**New in this PR:** yes. Neither customizer file exists at the merge base `79692cf5`; `git diff --stat` shows both added in full (+2074 / +1840).
+
+I wrote no scratch files and modified nothing. I skipped `/tmp/refute4/` because my environment rules forbid writing under `/tmp`; all scripts ran inline via `node -e`, so there was nothing to delete.The test asserts the exact old string in two places, so the fix also updates those assertions.
+
+Next I'm reproducing on the real kvcr manifest. I'll look at how the test drives the engine first.
+
+Runtime shell variables are preserved now; only the three template variables get substituted. Comparing against `deploy.sh`'s variable list, then running the tests and pre-commit:
+
+Tests (55 pass) and pre-commit are clean. A fresh agent now confirms that the final diff fixes exactly the three listed findings.
+
+**CONFIRMED.**
+
+- Exactly ten vLLM XPU DRA bundles gained the prerequisite line; no other bundle changes. Files: `/tmp/work/dynamo/docs/fern/pages/recipes/examples/{aggregated,aggregated-kv-routing,approximate-kv-routing,disaggregated-kv-routing,disaggregated,lora,planner,tracing}.mdx`.
+- Exactly five descriptions changed to mention Intel XPU with DRA; IDs, labels, and targets are unchanged (e.g. `/tmp/work/dynamo/docs/fern/pages/recipes/examples/tracing.mdx:17-18`).
+- `envsubst` now receives a single-quoted SHELL-FORMAT derived from non-empty `templateVars` at `/tmp/work/dynamo/docs/fern/components/deployment-customizer.ts:1570-1582`; `TEMPLATE_VAR` permits only shell-safe identifier characters at `:766`.
+- Only the two expected test assertions changed at `/tmp/work/dynamo/docs/tests/test_deployment_customizer.py:479,485`.
+- Diff is limited to the expected 10 files; `git diff --check` passes.Confirmed. Next I'm saving the diff as a session artifact, discarding the local changes, and cleaning up.
+
+The worktree is clean on `main`. I'm checking whether the stray `/tmp/tmp*.json` files came from this run before removing anything.
+
+These are dynamo logging configs and pytest dirs created by this run's pytest invocations (after 22:33). Removing them:
+
+Final read-only check: is the PR head unchanged, and what is CI's state now?
+
+DRY RUN. Nothing was written to GitHub: no pushes, comments, replies, resolutions or reruns. The worktree is clean on `main` and the temp files are removed.
+
+**Environment checks**
+
+| Check | Result |
+|---|---|
+| `gh api user` prints Jont828 | OK |
+| `git fetch upstream main` and `git fetch origin` | OK |
+| Signed, signed-off commit on a detached HEAD; `git verify-commit` reports a good ED25519 signature | OK (test commit discarded) |
+| `pre-commit --version` (4.7.0) | OK |
+
+Triggered by the PR watch: a full review (steps C, R, S) of PR #17372 at head `279deed`.
+
+## Needs your attention
+
+1. **Three confirmed bugs in the deployment customizer.** The PR adds this code; each finding survived a fresh refutation attempt with a reproduction. All three fixes need a design choice, so I didn't make them.
+   - **P1, download Job waits on a PVC that doesn't exist yet.** With default settings, `trtllm/deploy/disagg-multinode.yaml` (shown on `multinode.mdx`) waits up to 60 minutes for the download Job. Its PVC is defined in the manifest, which is applied only afterwards (`deployment-customizer.ts` around L1552–1558 and L1645). Suggested fix: apply the manifest before the wait, or copy the PVC into `model-cache.yaml`.
+   - **P1, duplicate mounts in Shared PVC mode.** The parser treats flow-style `{…}` entries as opaque (L251–254). On the nemotron `agg.yaml` (shown on `audio.mdx`), Shared PVC mode then adds a second mount at the same `mountPath` (Kubernetes rejects this) and a second `HF_HOME`. It also emits an extra PVC, and the download Job ignores the worker's `subPath`. Suggested fix: read `name` and `mountPath` from flow-style items, or block PVC mode for such containers with a note.
+   - **P2, smoke test asks for the wrong model name.** Picking another model on the nemotron `agg.yaml` keeps `--served-model-name nvidia/nemotron-3-nano`, but the generated curl asks for the picked model, so it gets "Model not found" (L1619 and L1649). Suggested fix: use the served name in the curl, or rewrite it too.
+2. **The PR description is stale.** It says the DGD template pages are removed, but they're kept. It says the `examples/` READMEs are updated, but only `examples/README.md` and the root `README.md` change. It doesn't mention the eight migrated pages or the full `examples/` sync.
+3. **Design decisions for reviewers** (in the brief below).
+
+## PR #17372: not a draft, mergeable, waiting on docs-codeowner review
+
+**Status**
+- **Rebase:** not needed. The PR is MERGEABLE, not DIRTY or BEHIND.
+- **CI:** green, 94 pass and 34 skipped. The XPU job that was still running has now passed.
+- **CodeRabbit (step C):** nothing to do. All 14 threads are resolved, and the review body has no nitpick or outside-diff items.
+
+**Actions I would take:**
+1. Push one signed, signed-off review-fix commit to `docs/examples-site-migration` with the `Automated-by: pr-shepherd` trailer. It's a normal push; no rebase or backup branch is needed.
+2. Post the brief as a new comment; the PR has none yet.
+
+**Review results**
+- **Fixed (3):**
+  - P1: envsubst blanked the runtime shell variables in the kvcr manifests.
+  - P2: the 10 vLLM XPU DRA bundles lacked the prerequisite link the catalog's authoring rules require.
+  - P3: 5 XPU descriptions duplicated their CUDA siblings' descriptions.
+- **Asked (3):** the TS bugs above.
+- **Declined, refuted, or pre-existing:** none.
+- **P3 notes, not fixed:**
+  - Invalid DGD names are passed through unchecked (`DeploymentCustomizer.tsx` around L771–783).
+  - 11 local XPU launch rows also share descriptions with their CUDA siblings.
+
+**Validation, with the fix applied locally:**
+- `python3 -m pytest -c docs/fern/scripts/pytest.ini -p no:cacheprovider --noconftest docs/tests/test_examples_catalog.py docs/tests/test_deployment_customizer.py -q`: 55 passed.
+- `docs_lint --scan docs`: 0 errors.
+- `pre-commit run --files <changed>`: passed.
+- A Node reproduction on `kvcr/agg.yaml` shows `$POD_INDEX` and the other runtime variables are kept.
+- A fresh subagent confirmed the diff fixes exactly these findings.
+
+**Fix I would push** (10 files, +28/−8; the full diff is saved in the session folder as `files/pr17372-review-fix.diff`):
+
+```diff
+# deployment-customizer.ts:1579
+-      `envsubst < ${manifestFile.name} | kubectl apply ${ns} -f -`,
++      `envsubst '${templateVars.map((name) => `\${${name}}`).join(" ")}' < ${manifestFile.name} | kubectl apply ${ns} -f -`,
+# test_deployment_customizer.py:479,485 (both assertions)
+-    assert "envsubst < probe.yaml" in ...
++    assert "envsubst '${DYNAMO_VERSION}' < probe.yaml" in ...
+# 10 vLLM XPU DRA bundles in aggregated, aggregated-kv-routing, approximate-kv-routing,
+# disaggregated, disaggregated-kv-routing, lora (x2), planner, tracing (x2) .mdx
++**Prerequisites:** [Deploy on Intel GPUs with DRA](../../kubernetes/model-deployment/deploy-on-intel-gpus.mdx)
+# 5 descriptions, for example aggregated.mdx:18
+-"description": "Baseline aggregated serving"
++"description": "Aggregated serving on Intel XPU with DRA"
+```
+
+**Brief (shadow, not posted):**
+
+> <!-- pr-shepherd:review-brief head=<review-fix SHA> -->
+> **Review brief** for `<review-fix>`, written by the author's automated PR assistant.
+>
+> **What it does:** Adds an Examples catalog under Recipes. It has a filterable index, a per-example selector, a deployment customizer that rewrites embedded manifests and generates kubectl steps, and a diffusion catalog, plus redirects and tests.
+>
+> **Risk:** Medium. The change is docs-only, but it adds about 4k lines of TS that generate commands readers will run, reworks the nav and redirects, and makes the publish workflow sync the full `examples/` tree.
+>
+> **Where to look:**
+> 1. `docs/fern/components/deployment-customizer.ts`: manifest rewriting and the generated steps.
+> 2. `docs/fern/index.yml` and `docs/fern/docs.yml`: the new nav, eight migrated pages, and redirects.
+> 3. `.github/workflows/fern-docs.yml`: the full `examples/` sync.
+>
+> **Decisions for reviewers:**
+> 1. Keep the eight migrated pages here, or move them to the README follow-up? They duplicate READMEs that stay on main, and drift has already needed ports.
+> 2. Keep the three DGD template pages out of the nav until that follow-up?
+> 3. Sync the whole `examples/` tree (3.1 MB) to docs-website?
+>
+> **Checked:**
+> - CI green at `279deed`.
+> - 55 docs tests pass, docs_lint reports 0 errors, and pre-commit passes.
+> - Self-review fixes in `<sha>`: envsubst limited to the template variables, XPU prerequisites, distinct XPU descriptions.
+> - CodeRabbit: all 14 threads resolved.
+>
+> **Still open:** three customizer edge cases (PVC download ordering, flow-style mounts, served model name) and a PR description update.
+
+
+===== END REPORT =====
+

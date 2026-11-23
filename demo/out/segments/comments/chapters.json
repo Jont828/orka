@@ -1,0 +1,58 @@
+{
+  "part": "comments",
+  "label": "1",
+  "title": "Review comments",
+  "subtitle": "CodeRabbit flags a bug: the shepherd checks it, fixes it and settles the thread",
+  "recorded": "Nov 11, 2026",
+  "key": "comments",
+  "duration": 120.9,
+  "chapters": [
+    {
+      "key": "setup",
+      "label": "Setup",
+      "subtitle": "PR #11 in the fork: CodeRabbit says M and G use powers of 1024",
+      "start": 0.0,
+      "browser": [
+        "opener-comments",
+        "pr-before@start~start+9",
+        "pr-before@checks-7.8~checks"
+      ],
+      "end": 25.8
+    },
+    {
+      "key": "notice",
+      "label": "The gate notices",
+      "subtitle": "The head is new and quiet, so a review run starts",
+      "start": 25.8,
+      "browser": "log-run2-c@start~work",
+      "end": 35.994
+    },
+    {
+      "key": "work",
+      "label": "The agent works",
+      "subtitle": "It checks the claim on evidence, reproduces it, fixes it and replies",
+      "start": 35.994,
+      "browser": "log-run2-c@work~end",
+      "end": 72.799
+    },
+    {
+      "key": "result",
+      "label": "Result",
+      "subtitle": "One signed fix commit; CodeRabbit verified it and resolved its own thread",
+      "start": 72.799,
+      "browser": [
+        "pr-reviewed@start~commit",
+        "pr-reviewed@diff~end"
+      ],
+      "end": 102.062
+    },
+    {
+      "key": "production",
+      "label": "In production",
+      "subtitle": "The same step, live upstream: ai-dynamo/dynamo#18618",
+      "start": 102.062,
+      "browser": "upstream-prod",
+      "end": 120.9
+    }
+  ]
+}

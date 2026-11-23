@@ -1,0 +1,71 @@
+PR watch at Wed, Nov 11, 18:41 EST: a review is due, so the shepherd is starting a review run.
+- #11 (head 88d6e91): no merge conflict; CI passed (4 checks); review due (full review)
+[bootstrap 18:41:08] installing gh 2.103.3, uv 0.13.7, copilot 1.0.105
+[bootstrap 18:41:22] configuring git and cloning Jont828/dynamo
+
+[bootstrap 18:41:34] running Copilot CLI (claude-opus-5.5, effort xhigh); report follows
+===== PR SHEPHERD REPORT =====
+I'll start by fetching remotes and triaging PR #11.
+
+PR is CLEAN, CI green, no approvals. Now pulling the CodeRabbit review body and review threads.
+
+One unresolved CodeRabbit thread (M/G multipliers). Let me read the PR's code at head and the base diff.
+
+CodeRabbit's finding still applies at head (`M`/`G` use 1024). Next, I'll read the review rubric from upstream/main for self-review.
+
+Rubric read. Now checking test markers, CI collection, replication (existing quantity parsers / `kubernetes.utils.parse_quantity`), and running the tests.
+
+The test run needs the same deps CI installs; installing them into the venv.
+
+13 tests pass at head. Now reproducing the CodeRabbit claim and probing edge cases against Kubernetes semantics.
+
+Verifying the new tests fail without the fix and pass with it, then running pre-commit.
+
+Regression tests fail without the fix and pass with it. Running pre-commit on the PR's files.
+
+Pre-commit passes. Before committing, a fresh subagent will confirm the diff fixes exactly the listed item and nothing else.
+
+**CONFIRMED**
+
+- **(a)** `/tmp/work/dynamo/deploy/utils/quantity.py` changes only `M` and `G` to `1000**2` and `1000**3`, matching Kubernetes decimal semantics.
+- **(b)** New `M`/`G` assertions pass with current source: **15 passed**. With old multipliers, all three new assertions fail with `1048576`/`1073741824`.
+- **(c)** Diff contains only those multiplier fixes and regression assertions. Other suffixes are unchanged; `git diff --check` passes.
+
+No problem found in the diff. The normal pytest command initially loaded a stale same-second `.pyc`; forcing current source confirmed the passing result.Confirmed. Re-checking the PR head and approvals, then committing (signed, signed-off) and pushing.
+
+Commit is signed and signed off. Running pre-commit over the full PR range, then pushing with a lease on the old head.
+
+Pushed `418a77b`. Now replying in the CodeRabbit thread and resolving it.
+
+Thread resolved. Waiting for CI on the new head before writing the brief.
+
+CI is green at `418a77b`. Posting the review brief (none exists yet).
+
+I'll write the brief with literal values instead of shell substitution.
+
+Brief posted. Final state check and cleanup.
+
+DEMO RUN (sandbox PR in Jont828/dynamo)
+
+**Triggered by the PR watch:** CodeRabbit's review of PR #11 (`orka-demo/quantity-parser`, head `88d6e91`), so I did a full review.
+
+**Nothing needs you.** Two optional nits for you are at the end.
+
+### [PR #11](https://github.com/Jont828/dynamo/pull/11): Kubernetes quantity parser
+**Status:** Merge state is CLEAN, all checks pass at `418a77b`, there are no approvals, and every review thread is resolved. It didn't need a rebase.
+
+**What I did**
+- **CodeRabbit's finding was right.** The `M` and `G` suffixes used powers of 1024, so `"1M"` came out as 1048576 instead of 1000000. I switched both to powers of 1000 and added tests for `1M`, `1G` and `memory_bytes("1G")`. All three new tests fail on the old code.
+- **Pushed** that fix as `418a77b`, a signed and signed-off commit. No backup branch was needed because the push only added a commit.
+- **Validation:** the 15 tests pass, pre-commit is clean, and the sandbox test check passed at the new head.
+- **Thread:** I replied with the commit and resolved it.
+- **Review brief:** [posted](https://github.com/Jont828/dynamo/pull/11#issuecomment-6810034200). It rates the risk Low and asks reviewers one question: nothing calls the module yet, so should it merge now or land with its first caller?
+
+**Review totals:** 1 fixed, 0 declined, 0 refuted, 0 pre-existing. My own review found nothing serious beyond CodeRabbit's issue.
+
+**Optional nits for you**
+1. The parser rejects `1.` and `+1`, which Kubernetes accepts. A test rejects `-1`, so leaving out signs looks deliberate. Either widen the pattern or say so in the module docstring.
+2. The PR description doesn't give the core-logic line count (about 25 lines) under Key Changes. It also doesn't record that a search found no existing parser, not even in `kubernetes-asyncio`. The `pr-checklist` skill asks for both.
+
+
+===== END REPORT =====

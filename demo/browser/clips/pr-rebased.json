@@ -1,0 +1,28 @@
+{
+  "scene": "pr-rebased",
+  "ok": true,
+  "duration": 34.985,
+  "start": 3.183,
+  "marks": [
+    {
+      "t": 3.183,
+      "label": "start"
+    },
+    {
+      "t": 13.927,
+      "label": "commit"
+    },
+    {
+      "t": 22.555,
+      "label": "backup"
+    },
+    {
+      "t": 29.041,
+      "label": "checks"
+    },
+    {
+      "t": 34.985,
+      "label": "end"
+    }
+  ]
+}

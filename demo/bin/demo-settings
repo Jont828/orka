@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# demo-settings: what the demo schedule changes relative to the production Task. Everything
+# else (image, bootstrap.sh, watch.mjs, the pr-shepherd prompt, Secrets) is copied as is.
+f=~/orka-demo/pr-shepherd/pr-shepherd-demo.json
+jq -r '.metadata.name, "  schedule: \(.spec.schedule) (\(.spec.timeZone)), \(.spec.concurrencyPolicy)",
+  (.spec.env[] | select(.name|test("^SHEPHERD_(REPO|STATE_VAR|REVIEW|REVIEW_QUIET_MINUTES|FULL_DAYS|MODE)$")) | "  \(.name)=\(.value)")' "$f"
+echo "  SHEPHERD_PROMPT = demo-preamble.md + the production prompt:"
+head -n 2 ~/orka-demo/pr-shepherd/demo-preamble.md | cut -c1-94 | sed 's/^/    /'

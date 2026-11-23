@@ -1,0 +1,1 @@
+gh api repos/Jont828/dynamo/pulls/11/comments --jq '.[] | "\(.user.login) on \(.path):\(.line)", (.body | gsub("<[^>]+>"; "") | split("\n") | map(select(test("^\\s*$") | not)) | .[0:4][])' | fold -s -w 98

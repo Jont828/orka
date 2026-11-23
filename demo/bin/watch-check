@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# watch-check [prod|demo]: run the production PR watch gate (watch.mjs) read-only with the
+# laptop's gh token and print what the next slot would do. "demo" uses the demo Task's
+# settings (the sandbox PR in Jont828/dynamo).
+set -euo pipefail
+B=~/.copilot/session-state/61dbc630-ca86-479c-85ea-7f9c8af18507/files/orka-pr-shepherd
+export GH_TOKEN=$(gh auth token) TZ=America/New_York SHEPHERD_MODE=check SHEPHERD_OUT_DIR=$(mktemp -d)
+if [ "${1:-demo}" = demo ]; then
+  # Review mode as the demo Task has it now (live for the review demos, off for the CI ones).
+  review=$(kubectl --context h100 -n orka-system get task dynamo-pr-shepherd-demo \
+    -o jsonpath='{.spec.env[?(@.name=="SHEPHERD_REVIEW")].value}')
+  export SHEPHERD_REPO=Jont828/dynamo SHEPHERD_STATE_VAR=ORKA_PR_SHEPHERD_DEMO_STATE SHEPHERD_REVIEW=${review:-live} \
+    SHEPHERD_REVIEW_QUIET_MINUTES=0 SHEPHERD_FULL_DAYS=8
+else
+  export SHEPHERD_REVIEW=shadow
+fi
+node "$B/watch.mjs"
+rm -rf "$SHEPHERD_OUT_DIR"

@@ -1,0 +1,24 @@
+{
+  "scene": "ci-base-before",
+  "ok": true,
+  "duration": 25.831,
+  "start": 1.662,
+  "marks": [
+    {
+      "t": 1.662,
+      "label": "start"
+    },
+    {
+      "t": 11.595,
+      "label": "pr"
+    },
+    {
+      "t": 18.134,
+      "label": "job"
+    },
+    {
+      "t": 25.831,
+      "label": "end"
+    }
+  ]
+}

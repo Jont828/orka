@@ -1,0 +1,46 @@
+{
+  "part": "ci",
+  "label": "3a",
+  "title": "Our change broke a test → fix",
+  "subtitle": "The PR's own code fails its tests: the shepherd finds the bug and pushes one signed fix",
+  "recorded": "Nov 17, 2026",
+  "key": "ci_ours",
+  "duration": 115.3333,
+  "chapters": [
+    {
+      "key": "setup",
+      "label": "Setup",
+      "subtitle": "PR #12 adds a duration parser; three of its own tests fail in CI",
+      "start": 0.0,
+      "browser": [
+        "opener-ci_ours",
+        "ci-ours-before"
+      ],
+      "end": 26.779
+    },
+    {
+      "key": "notice",
+      "label": "The gate notices",
+      "subtitle": "Once CI on that head has finished, the next slot hands the failure over",
+      "start": 26.779,
+      "browser": "log-3a@start~work",
+      "end": 44.22
+    },
+    {
+      "key": "work",
+      "label": "The agent works",
+      "subtitle": "Whose bug is it? This PR's: reproduce, fix, validate, push, wait for CI",
+      "start": 44.22,
+      "browser": "log-3a@work~end",
+      "end": 87.157
+    },
+    {
+      "key": "result",
+      "label": "Result",
+      "subtitle": "One signed CI-fix commit; CI is green and nothing needs the author",
+      "start": 87.157,
+      "browser": "ci-ours-after",
+      "end": 115.3333
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "scene": "prod-report",
+  "ok": true,
+  "duration": 35.343,
+  "start": 5.076,
+  "marks": [
+    {
+      "t": 5.076,
+      "label": "start"
+    },
+    {
+      "t": 35.343,
+      "label": "end"
+    }
+  ]
+}

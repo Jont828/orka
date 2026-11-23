@@ -1,0 +1,65 @@
+{
+  "part": "review",
+  "label": "4",
+  "title": "Review assistant",
+  "subtitle": "A codeowner-style self-review, a subagent to confirm each fix, one brief for maintainers",
+  "recorded": "Nov 11, 2026",
+  "key": "review",
+  "duration": 126.0,
+  "chapters": [
+    {
+      "key": "setup",
+      "label": "Setup",
+      "subtitle": "A PR head with new commits from the author, quiet for an hour (no wait in the demo)",
+      "start": 0.0,
+      "browser": [
+        "opener-review",
+        "pr-rebased@start~start+5"
+      ],
+      "end": 14.0
+    },
+    {
+      "key": "notice",
+      "label": "The gate notices",
+      "subtitle": "PR #11's rebased head is new and quiet: a review is due",
+      "start": 14.0,
+      "browser": "log-run2-rs@start~work",
+      "end": 21.116
+    },
+    {
+      "key": "work",
+      "label": "The agent works",
+      "subtitle": "Dynamo's rubric, a codeowner's checks, every fix confirmed by a fresh subagent",
+      "start": 21.116,
+      "browser": "log-run2-rs@work~end",
+      "end": 64.025
+    },
+    {
+      "key": "result",
+      "label": "Result",
+      "subtitle": "One brief: what the PR does, its risk, where to look, the decisions left",
+      "start": 64.025,
+      "browser": [
+        "pr-reviewed@brief~diff",
+        "orka-result-2@start~schedule"
+      ],
+      "end": 94.66
+    },
+    {
+      "key": "quiet",
+      "label": "Afterwards",
+      "subtitle": "The shepherd's own fix doesn't start another review",
+      "start": 94.66,
+      "browser": "orka-result-2@schedule~end",
+      "end": 103.331
+    },
+    {
+      "key": "production",
+      "label": "In production",
+      "subtitle": "Shadow mode: the brief goes into the report until the author turns it live",
+      "start": 103.331,
+      "browser": "orka-prod@report~end",
+      "end": 126.0
+    }
+  ]
+}

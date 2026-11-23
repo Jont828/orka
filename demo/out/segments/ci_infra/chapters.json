@@ -1,0 +1,46 @@
+{
+  "part": "ci",
+  "label": "3c",
+  "title": "Not our bug, no fix yet → reported",
+  "subtitle": "A fork-only bot job fails: diagnosed as infrastructure and reported, not patched",
+  "recorded": "Nov 11, 2026",
+  "key": "ci_infra",
+  "duration": 55.1667,
+  "chapters": [
+    {
+      "key": "setup",
+      "label": "Setup",
+      "subtitle": "PR #11's failed check is a Dynamo bot job that has no token in a fork",
+      "start": 0.0,
+      "browser": [
+        "opener-ci_infra",
+        "pr-before@checks~end"
+      ],
+      "end": 15.798
+    },
+    {
+      "key": "notice",
+      "label": "The gate notices",
+      "subtitle": "The same run as demo 2 was also given the failed check",
+      "start": 15.798,
+      "browser": "log-run1-b@start~work",
+      "end": 22.914
+    },
+    {
+      "key": "work",
+      "label": "The agent works",
+      "subtitle": "It reads the failing job's log and compares it with what the PR changes",
+      "start": 22.914,
+      "browser": "log-run1-b@work~end",
+      "end": 41.369
+    },
+    {
+      "key": "result",
+      "label": "Result",
+      "subtitle": "Cause 3, High confidence: reported with the evidence, no commit for it",
+      "start": 41.369,
+      "browser": "pr-rebased@checks~end",
+      "end": 55.1667
+    }
+  ]
+}

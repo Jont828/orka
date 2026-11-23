@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# cap <id> <command...>: run a demo command for real in a 100x30 pty and keep its exact
+# output and timing as captures/<id>.cast (asciicast v2), plus the command text in <id>.cmd.
+# The final demo cast types the command and replays this output.
+set -euo pipefail
+id=$1; shift
+dir=~/orka-demo/pr-shepherd/captures
+cmd="$*"
+printf '%s\n' "$cmd" > "$dir/$id.cmd"
+date '+%Y-%m-%dT%H:%M:%S%z' > "$dir/$id.when"
+cd ~/orka-demo/pr-shepherd/sandbox/dynamo 2>/dev/null || true
+asciinema rec --headless --window-size 100x30 -f asciicast-v2 -q --overwrite \
+  -c "bash --norc --noprofile -c $(printf '%q' "export PATH=$HOME/orka-demo/pr-shepherd/bin:$PATH TERM=xterm-256color COLUMNS=100 LINES=30 GH_FORCE_TTY=100 CLICOLOR_FORCE=1; $cmd")" \
+  "$dir/$id.cast" >/dev/null 2>&1 || true
+# Show what was captured (plain text) so the caller can check it.
+python3 - "$dir/$id.cast" <<'PY'
+import json, re, sys
+out = []
+with open(sys.argv[1]) as f:
+    next(f)
+    for line in f:
+        t, kind, data = json.loads(line)
+        if kind == "o":
+            out.append(data)
+text = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\r", "", "".join(out))
+print(text.rstrip())
+PY

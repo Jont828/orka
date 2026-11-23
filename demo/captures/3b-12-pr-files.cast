@@ -1,0 +1,5 @@
+{"version":2,"width":100,"height":30,"timestamp":1794958742,"command":"bash --norc --noprofile -c export\\ PATH=/Users/jonathan/orka-demo/pr-shepherd/bin:/Users/jonathan/.local/bin:/Users/jonathan/Go/bin:/opt/homebrew/opt/go@1.24/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/opt/homebrew/bin\\ TERM=xterm-256color\\ COLUMNS=100\\ LINES=30\\ GH_FORCE_TTY=100\\ CLICOLOR_FORCE=1\\;\\ gh\\ pr\\ diff\\ 13\\ -R\\ Jont828/dynamo\\ --name-only","env":{"SHELL":"/bin/zsh"}}
+[0.027042, "o", "\u001b]11;?\u001b\\\u001b[6n"]
+[5.034355, "o", "\u001b[0;36mWorking...\u001b[0m\r\n"]
+[5.786922, "o", "deploy/utils/README.md\r\n"]
+[5.792707, "x", "0"]

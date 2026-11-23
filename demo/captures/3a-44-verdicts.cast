@@ -1,0 +1,5 @@
+{"version":2,"width":100,"height":30,"timestamp":1794958222,"command":"bash --norc --noprofile -c export\\ PATH=/Users/jonathan/orka-demo/pr-shepherd/bin:/Users/jonathan/.local/bin:/Users/jonathan/Go/bin:/opt/homebrew/opt/go@1.24/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/opt/homebrew/bin\\ TERM=xterm-256color\\ COLUMNS=100\\ LINES=30\\ GH_FORCE_TTY=100\\ CLICOLOR_FORCE=1\\;\\ verdicts\\ dynamo-pr-shepherd-demo\\ 3","env":{"SHELL":"/bin/zsh"}}
+[7.005977, "o", "PR watch at Tue, Nov 17, 18:15 EST: new problems, so the shepherd is starting a run scoped to them.\r\n"]
+[11.854999, "o", "PR watch at Tue, Nov 17, 18:20 EST: nothing new, so the shepherd didn't run.\r\n"]
+[16.835987, "o", "PR watch at Tue, Nov 17, 18:25 EST: nothing new, so the shepherd didn't run.\r\n"]
+[16.842436, "x", "0"]

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# pr-brief <pr>: the review brief comment the shepherd keeps on the sandbox PR.
+gh api "repos/Jont828/dynamo/issues/$1/comments" \
+  --jq '.[] | select(.body | contains("pr-shepherd:review-brief")) | "\(.user.login) · \(.created_at) · \(.html_url)\n", .body' | fold -s -w 99

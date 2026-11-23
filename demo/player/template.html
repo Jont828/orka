@@ -1,0 +1,312 @@
+<title>Orka PR Shepherd Demo</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&family=Schibsted+Grotesk:wght@600;800&display=swap">
+<style>
+/* Layout: a two-pane stage (terminal | browser) that plays as one recording, the outline of
+   parts and their beats under it (the same outline as the video's rail), then what each demo
+   did, with links to the evidence. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --ink: #0f1a24;
+  --muted: #566272;
+  --line: #d6dde5;
+  --accent: #0b5cad;
+  --amber: #8f5300;
+  --amber-bg: #fff1d1;
+  --amber-line: #e0a43a;
+  --stage: #0d1117;
+  --stage-line: #30363d;
+  --stage-ink: #c9d1d9;
+  --stage-muted: #8b949e;
+  --stage-hi: #f0b72f;
+  --font-display: "Schibsted Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Atkinson Hyperlegible", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a0e13; --surface: #10161d; --ink: #e6edf3; --muted: #8d98a6; --line: #26303c;
+    --accent: #6cb2ff; --amber: #f0b72f; --amber-bg: rgba(240, 183, 47, 0.13); --amber-line: #b98a22;
+    --stage: #0d1117; --stage-line: #30363d; --stage-ink: #c9d1d9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0a0e13; --surface: #10161d; --ink: #e6edf3; --muted: #8d98a6; --line: #26303c;
+  --accent: #6cb2ff; --amber: #f0b72f; --amber-bg: rgba(240, 183, 47, 0.13); --amber-line: #b98a22;
+  --stage: #0d1117; --stage-line: #30363d; --stage-ink: #c9d1d9; color-scheme: dark;
+}
+
+body { background: var(--bg); color: var(--ink); font: 16px/1.55 var(--font-body); }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+code { font: 0.86em var(--font-mono); }
+.log code, .note code { overflow-wrap: anywhere; }
+
+.wrap { max-width: 1680px; margin: 0 auto; padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 28px; }
+
+header { display: grid; gap: 10px; max-width: 80ch; }
+.eyebrow { margin: 0; font: 600 12px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font: 800 clamp(28px, 3.4vw, 44px)/1.08 var(--font-display); letter-spacing: -0.02em; text-wrap: balance; }
+.lede { margin: 0; color: var(--muted); font-size: 17px; }
+.lede strong { color: var(--ink); }
+
+.stage { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1100px) { .stage { grid-template-columns: minmax(0, 46fr) minmax(0, 54fr); align-items: stretch; } }
+.pane { margin: 0; min-width: 0; background: var(--stage); border: 1px solid var(--stage-line); border-radius: 10px; overflow: hidden; }
+.pane figcaption { display: flex; justify-content: space-between; gap: 12px; padding: 9px 14px; border-bottom: 1px solid var(--stage-line);
+  font: 12.5px/1.3 var(--font-mono); color: var(--stage-ink); }
+.pane figcaption span:last-child { color: var(--stage-muted); }
+@media (max-width: 640px) { .pane figcaption span:last-child { display: none; } }
+#term { min-height: 120px; }
+.web { display: flex; flex-direction: column; }
+.web video { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; background: #000; cursor: pointer; }
+
+/* the current part and beat, in the band under the browser video (it evens out the two panes' heights) */
+.now { flex: 1; display: grid; align-content: center; gap: 3px; padding: 10px 14px; border-top: 1px solid var(--stage-line); }
+.now p { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.now b { font: 700 16px/1.3 var(--font-display); color: var(--stage-hi); }
+.now .beat { font: 700 16px/1.3 var(--font-display); color: #f0f6fc; }
+.now .sep { color: var(--stage-muted); }
+.now .sub { font-size: 14px; line-height: 1.35; color: var(--stage-ink); }
+.hint { display: none; margin: 0; color: var(--muted); font-size: 14px; }
+@media (max-width: 700px) { .hint { display: block; } }
+
+/* the outline: one block per part; part 3 holds three demos (3a, 3b, 3c); each demo's beats are buttons */
+.outline { display: grid; gap: 10px; }
+.outline h2 { margin: 0; }
+.parts { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.part { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 8px;
+  padding: 12px 14px; display: grid; gap: 8px; }
+.part[data-current="true"] { border-left-color: var(--amber-line); }
+.part-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.part-label { font: 600 13px/1 var(--font-mono); color: var(--muted); min-width: 4.6em; }
+@media (max-width: 640px) { .part-label { min-width: 0; } }
+.part-title { font: 800 18px/1.25 var(--font-display); letter-spacing: -0.005em; }
+.part-step { font: 13px/1 var(--font-mono); color: var(--amber); }
+.part-head time { margin-left: auto; font: 600 12.5px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.demos { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.demo { display: grid; gap: 6px 14px; align-items: baseline; }
+@media (min-width: 900px) { .demo.sub { grid-template-columns: minmax(0, 20em) minmax(0, 1fr); } }
+.demo-title { margin: 0; font-size: 15px; font-weight: 700; display: flex; gap: 10px; align-items: baseline; }
+.demo-title span:first-child { font: 600 13px/1 var(--font-mono); color: var(--muted); min-width: 1.8em; }
+.beats { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.beats button { display: inline-flex; gap: 8px; align-items: baseline; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--bg); color: var(--ink); font: 14px/1.3 var(--font-body); cursor: pointer; }
+.beats button:hover { border-color: var(--accent); }
+.beats time { font: 600 12px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.beats button[aria-current="true"] { background: var(--amber-bg); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.beats button[aria-current="true"] time { color: var(--amber); }
+
+h2 { margin: 0 0 12px; font: 800 22px/1.2 var(--font-display); letter-spacing: -0.01em; }
+.facts { display: grid; gap: 28px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 980px) { .facts { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
+.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.log li { display: grid; grid-template-columns: 4.6em minmax(0, 1fr); gap: 12px; }
+@media (max-width: 640px) { .log li { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+.log .tag { font: 600 13.5px/1.6 var(--font-mono); color: var(--accent); }
+.log p { margin: 0; }
+.log .what { font-weight: 700; }
+.log .what small { font-weight: 400; color: var(--muted); font-size: 14px; }
+.log .detail { color: var(--muted); font-size: 15px; }
+.note { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; display: grid; gap: 10px; align-content: start; }
+.note p { margin: 0; color: var(--muted); font-size: 15px; }
+.note p strong { color: var(--ink); }
+.small { color: var(--muted); font-size: 14px; max-width: 90ch; margin: 0; }
+
+/* asciinema-player 3.10.0 stylesheet, inlined (the page may not load external CSS) */
+{{PLAYER_CSS}}
+.asciinema-player-theme-orka {
+  --term-color-foreground: #e6edf3; --term-color-background: #0d1117;
+  --term-color-0: #484f58; --term-color-1: #ff7b72; --term-color-2: #3fb950; --term-color-3: #d29922;
+  --term-color-4: #58a6ff; --term-color-5: #bc8cff; --term-color-6: #39c5cf; --term-color-7: #b1bac4;
+  --term-color-8: #6e7681; --term-color-9: #ffa198; --term-color-10: #56d364; --term-color-11: #e3b341;
+  --term-color-12: #79c0ff; --term-color-13: #d2a8ff; --term-color-14: #56d4dd; --term-color-15: #ffffff;
+}
+.ap-wrapper { border-radius: 0 !important; }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Orka 0.3.0 · AKS cluster h100 · recorded Nov 11 and Nov 17, 2026</p>
+    <h1>The Orka PR shepherd, demo by demo</h1>
+    <p class="lede">A scheduled Orka Task runs Copilot CLI with the <code>pr-shepherd</code> skill on Jont828's open PRs in ai-dynamo/dynamo.
+      Each demo sets up one problem on a sandbox PR in the fork (<a href="https://github.com/Jont828/dynamo/pull/11">#11</a>,
+      <a href="https://github.com/Jont828/dynamo/pull/12">#12</a>, <a href="https://github.com/Jont828/dynamo/pull/13">#13</a>),
+      then leaves it alone. <strong>After each setup, nobody touched the PR.</strong> Press play on the terminal; the browser follows it.</p>
+  </header>
+
+  <section class="stage" aria-label="Synchronized recordings">
+    <figure class="pane term">
+      <figcaption><span>terminal · real commands and output</span><span>asciinema</span></figcaption>
+      <div id="term"></div>
+    </figure>
+    <figure class="pane web">
+      <figcaption><span>browser · GitHub and the Orka dashboard</span><span>Playwright · follows the terminal</span></figcaption>
+      <video id="web" src="{{VIDEO_SRC}}" poster="{{POSTER_SRC}}" muted playsinline preload="auto"></video>
+      <div class="now" aria-live="polite">
+        <p><b id="now-title">Intro · Orka and the PR shepherd</b><span class="sep">/</span><span class="beat" id="now-beat">What Orka is</span></p>
+        <p class="sub" id="now-sub">A Kubernetes-native platform that runs container and AI-agent Tasks</p>
+      </div>
+    </figure>
+  </section>
+
+  <p class="hint">The terminal is 100 columns wide. Turn your phone sideways or use a wider screen to read it.</p>
+
+  <nav class="outline" aria-labelledby="outline-title">
+    <h2 id="outline-title">Outline</h2>
+    <ol class="parts" id="chapters"></ol>
+  </nav>
+
+  <section class="facts">
+    <div>
+      <h2>What each demo did, unattended</h2>
+      <ol class="log">
+        <li><span class="tag">1</span><div><p class="what">Review comments <small>· step C · #11, Nov 11</small></p>
+          <p class="detail">CodeRabbit flagged that <code>M</code> and <code>G</code> were powers of 1024. The review run reproduced it, added regression tests that fail on the old code,
+            had a fresh subagent confirm the diff and pushed one signed commit, <a href="https://github.com/Jont828/dynamo/commit/418a77b">418a77b</a>.
+            It answered the thread; CodeRabbit verified the fix and resolved it.</p></div></li>
+        <li><span class="tag">2</span><div><p class="what">Merge conflict → rebase <small>· step A · #11, Nov 11</small></p>
+          <p class="detail"><a href="https://github.com/Jont828/dynamo/commit/5998863">5998863</a> on the base edited the PR's README line. The next slot made a verified backup,
+            rebased keeping both lines, ran pre-commit and 13 tests, and pushed 4595c1b → 88d6e91 with <code>--force-with-lease</code>.</p></div></li>
+        <li><span class="tag">3a</span><div><p class="what">Our change broke a test → fix <small>· step B · #12, Nov 17</small></p>
+          <p class="detail">The new duration parser multiplied hours by 360, so three of its own tests failed. The run reproduced them, called it the PR's own code (High),
+            backed up the branch and pushed <a href="https://github.com/Jont828/dynamo/commit/eb2c0f9">eb2c0f9</a>, signed and marked <code>Automated-by: pr-shepherd</code>. CI went green.</p></div></li>
+        <li><span class="tag">3b</span><div><p class="what">Fixed on main → rebase <small>· step B · #13, Nov 17</small></p>
+          <p class="detail"><a href="https://github.com/Jont828/dynamo/commit/07a80bb">07a80bb</a> on the base stopped quoting <code>y</code> and <code>n</code>, and docs-only #13, which branched after it, failed a YAML test.
+            <a href="https://github.com/Jont828/dynamo/commit/367a899">367a899</a> then fixed the base. The run ruled out the README change, cited both commits (cause 2, stale base, High),
+            backed up and rebased acb0ab8 → <a href="https://github.com/Jont828/dynamo/commit/2c2baf4">2c2baf4</a>. CI went green.</p></div></li>
+        <li><span class="tag">3c</span><div><p class="what">Not our bug, no fix yet → reported <small>· step B · #11, Nov 11</small></p>
+          <p class="detail">Dynamo's <code>ok-to-test</code> bot job failed because its <code>GH_TOKEN</code> is empty in a fork. The run read the job's log, called it fork infrastructure (High)
+            and reported it with the evidence. It made no commit for it.</p></div></li>
+        <li><span class="tag">4</span><div><p class="what">Review assistant <small>· steps R + S · #11, Nov 11</small></p>
+          <p class="detail">A codeowner-style self-review against Dynamo's rubric, with a fresh subagent trying to refute each finding before any fix,
+            then one <a href="https://github.com/Jont828/dynamo/pull/11#issuecomment-6810034200">review brief</a> for maintainers. Its own fix commit didn't start another review.</p></div></li>
+        <li><span class="tag">Wrap-up</span><div><p class="what">The 2-hourly report <small>· steps D–G · production, Nov 17</small></p>
+          <p class="detail">The 18:00 regular run covered four upstream PRs, all CI-green and waiting on review. It flagged a stacked PR built on an old copy of its parent,
+            and held back a fifth codeowner ping because the last one was under 3 business days old.</p></div></li>
+      </ol>
+    </div>
+    <aside class="note">
+      <h2>Production runs the same Task</h2>
+      <p><strong>Every 15 minutes</strong> the gate checks Jont828's open PRs in ai-dynamo/dynamo. A full run happens every two hours. In between, only a new conflict, a failed check or a due review starts one.</p>
+      <p><strong>Shadow mode upstream.</strong> Briefs and self-review fixes stay in the run's report until the user switches reviews to live. CodeRabbit threads are still settled: a run <a href="https://github.com/ai-dynamo/dynamo/pull/18618#discussion_r4544168982">fixed a CodeRabbit item on #18618</a> in <a href="https://github.com/ai-dynamo/dynamo/commit/751587a">751587a</a>.</p>
+      <p><strong>The demos stayed in the fork.</strong> A copy of the Task, every 5 minutes, read from and wrote to Jont828/dynamo only, through the gate's <code>SHEPHERD_REPO</code> setting and a preamble that forbids upstream writes.</p>
+      <p><strong>Guardrails.</strong> It never merges, approves, closes or posts <code>/ok to test</code>. It backs up before any rewrite, pushes with a lease, signs every commit and makes at most one fix commit of each kind per run.</p>
+    </aside>
+  </section>
+
+  <p class="small">The terminal replays real commands and their captured output. Typing is simulated, and long waits are shortened and marked ⏩ in the terminal.
+    The browser clips were recorded with Playwright in a logged-out Chrome, so GitHub shows no merge box; the captions were added on the page.
+    Both recordings share one timeline. Each demo was built as its own clip, then the clips were joined.</p>
+</div>
+
+<script src="{{PLAYER_JS_SRC}}"></script>
+<script>
+const CAST = {{CAST_JSON}};
+const OUTLINE = {{OUTLINE_JSON}};
+const CHAPTERS = OUTLINE.chapters;
+
+const video = document.getElementById('web');
+const list = document.getElementById('chapters');
+const nowTitle = document.getElementById('now-title');
+const nowBeat = document.getElementById('now-beat');
+const nowSub = document.getElementById('now-sub');
+const fmt = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+const player = AsciinemaPlayer.create({data: CAST}, document.getElementById('term'), {
+  theme: 'orka',
+  fit: 'width',
+  poster: 'npt:0:2',
+  preload: true,
+  terminalFontFamily: "'JetBrains Mono', ui-monospace, Menlo, monospace",
+});
+
+let playing = false;
+let active = -1;
+
+// The outline: a block per part, a row per demo, a button per beat (button i is chapter i).
+const buttons = [];
+const partBlocks = {};
+for (const part of OUTLINE.parts) {
+  const segs = OUTLINE.segments.filter((s) => s.part === part.key);
+  if (!segs.length) continue;
+  const li = el('li', 'part');
+  const head = el('div', 'part-head');
+  head.append(el('span', 'part-label', part.label), el('span', 'part-title', part.title), el('span', 'part-step', part.step),
+    el('time', null, fmt(segs[0].start)));
+  const demos = el('ol', 'demos');
+  for (const seg of segs) {
+    const row = el('li', segs.length > 1 ? 'demo sub' : 'demo');
+    if (segs.length > 1) {
+      const title = el('p', 'demo-title');
+      title.append(el('span', null, seg.label), el('span', null, seg.title));
+      row.append(title);
+    }
+    const beats = el('ol', 'beats');
+    CHAPTERS.forEach((c, i) => {
+      if (c.segment !== seg.key) return;
+      const b = el('button');
+      b.type = 'button';
+      b.title = c.subtitle || '';
+      b.append(el('time', null, fmt(c.start)), el('span', null, c.label));
+      b.addEventListener('click', () => jump(i));
+      buttons[i] = b;
+      const item = el('li');
+      item.append(b);
+      beats.append(item);
+    });
+    row.append(beats);
+    demos.append(row);
+  }
+  li.append(head, demos);
+  list.append(li);
+  partBlocks[part.key] = li;
+}
+
+function setActive(t) {
+  let i = CHAPTERS.findIndex((c) => t >= c.start && t < c.end);
+  if (i < 0) i = t >= CHAPTERS[CHAPTERS.length - 1].start ? CHAPTERS.length - 1 : 0;
+  if (i === active) return;
+  active = i;
+  const c = CHAPTERS[i];
+  const seg = OUTLINE.segments.find((s) => s.key === c.segment);
+  buttons.forEach((b, j) => b.setAttribute('aria-current', j === i ? 'true' : 'false'));
+  Object.entries(partBlocks).forEach(([k, b]) => b.setAttribute('data-current', k === c.part ? 'true' : 'false'));
+  nowTitle.textContent = `${seg.label} · ${seg.title}`;
+  nowBeat.textContent = c.label;
+  nowSub.textContent = c.subtitle || '';
+}
+
+async function jump(i) {
+  const t = CHAPTERS[i].start + 0.05;
+  try { await player.seek(t); } catch (e) {}
+  try { video.currentTime = t; } catch (e) {}
+  setActive(t);
+  if (!playing) { try { await player.play(); } catch (e) {} }
+}
+
+player.addEventListener('play', () => { playing = true; video.play().catch(() => {}); });
+player.addEventListener('playing', () => { playing = true; video.play().catch(() => {}); });
+player.addEventListener('pause', () => { playing = false; video.pause(); });
+player.addEventListener('ended', () => { playing = false; video.pause(); });
+// Clicking the browser video plays or pauses both, like clicking the terminal.
+video.addEventListener('click', () => { (playing ? player.pause() : player.play())?.catch?.(() => {}); });
+
+// The terminal leads; the browser video follows it within a third of a second.
+setInterval(async () => {
+  let t;
+  try { t = await player.getCurrentTime(); } catch (e) { return; }
+  if (typeof t !== 'number' || Number.isNaN(t)) return;
+  if (Math.abs(video.currentTime - t) > 0.33) { try { video.currentTime = t; } catch (e) {} }
+  if (playing && video.paused) video.play().catch(() => {});
+  setActive(t);
+}, 250);
+
+setActive(0);
+</script>

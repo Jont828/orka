@@ -1,0 +1,24 @@
+{
+  "scene": "ci-base-after",
+  "ok": true,
+  "duration": 19.823,
+  "start": 2.029,
+  "marks": [
+    {
+      "t": 2.029,
+      "label": "start"
+    },
+    {
+      "t": 7.038,
+      "label": "checks"
+    },
+    {
+      "t": 13.203,
+      "label": "backup"
+    },
+    {
+      "t": 19.823,
+      "label": "end"
+    }
+  ]
+}

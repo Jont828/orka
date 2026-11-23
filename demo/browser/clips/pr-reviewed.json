@@ -1,0 +1,28 @@
+{
+  "scene": "pr-reviewed",
+  "ok": true,
+  "duration": 49.946,
+  "start": 1.443,
+  "marks": [
+    {
+      "t": 1.443,
+      "label": "start"
+    },
+    {
+      "t": 17.124,
+      "label": "commit"
+    },
+    {
+      "t": 23.071,
+      "label": "brief"
+    },
+    {
+      "t": 37.364,
+      "label": "diff"
+    },
+    {
+      "t": 49.946,
+      "label": "end"
+    }
+  ]
+}

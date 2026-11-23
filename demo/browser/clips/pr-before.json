@@ -1,0 +1,20 @@
+{
+  "scene": "pr-before",
+  "ok": true,
+  "duration": 44.952,
+  "start": 16.521,
+  "marks": [
+    {
+      "t": 16.521,
+      "label": "start"
+    },
+    {
+      "t": 38.154,
+      "label": "checks"
+    },
+    {
+      "t": 44.952,
+      "label": "end"
+    }
+  ]
+}

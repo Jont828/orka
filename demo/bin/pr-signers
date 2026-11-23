@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# pr-signers <pr>: each commit on the sandbox PR with its SSH signing key and validity.
+gh api graphql -F n="$1" -f query='query($n: Int!) { repository(owner: "Jont828", name: "dynamo") { pullRequest(number: $n) {
+  commits(last: 10) { nodes { commit { abbreviatedOid messageHeadline message signature { isValid ... on SshSignature { keyFingerprint } } } } } } } }' \
+  --jq '.data.repository.pullRequest.commits.nodes[].commit
+    | "\(.abbreviatedOid)  \(if .signature.keyFingerprint == "SBKQSTrb8yvIuForFP77qqQ01yqZgtaUYzyMKCyNTgU" then "Orka H100 key " else "laptop key    " end) \(if .signature.isValid then "valid" else "INVALID" end)  \(if (.message | test("Automated-by: pr-shepherd")) then "[Automated-by]" else "              " end)  \(.messageHeadline)"'

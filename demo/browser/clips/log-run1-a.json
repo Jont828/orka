@@ -1,0 +1,20 @@
+{
+  "scene": "log-run1-a",
+  "ok": true,
+  "duration": 40.771,
+  "start": 4.934,
+  "marks": [
+    {
+      "t": 4.934,
+      "label": "start"
+    },
+    {
+      "t": 11.068,
+      "label": "work"
+    },
+    {
+      "t": 40.771,
+      "label": "end"
+    }
+  ]
+}

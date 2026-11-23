@@ -1,0 +1,16 @@
+{
+  "scene": "ci-base-fix",
+  "ok": true,
+  "duration": 7.23,
+  "start": 1.713,
+  "marks": [
+    {
+      "t": 1.713,
+      "label": "start"
+    },
+    {
+      "t": 7.23,
+      "label": "end"
+    }
+  ]
+}

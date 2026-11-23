@@ -1,0 +1,8 @@
+{"version":2,"width":100,"height":30,"timestamp":1794440810,"command":"bash --norc --noprofile -c export\\ PATH=/Users/jonathan/orka-demo/pr-shepherd/bin:/Users/jonathan/.local/bin:/Users/jonathan/Go/bin:/opt/homebrew/opt/go@1.24/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/opt/homebrew/bin\\ TERM=xterm-256color\\ COLUMNS=100\\ LINES=30\\ GH_FORCE_TTY=100\\ CLICOLOR_FORCE=1\\;\\ verdicts\\ dynamo-pr-shepherd\\ 6","env":{"SHELL":"/bin/zsh"}}
+[7.953771, "o", "PR watch at Wed, Nov 11, 17:00 EST: nothing new, so the shepherd didn't run.\r\n"]
+[12.670985, "o", "PR watch at Wed, Nov 11, 17:15 EST: nothing new, so the shepherd didn't run.\r\n"]
+[17.310182, "o", "PR watch at Wed, Nov 11, 17:30 EST: a review is due, so the shepherd is starting a review run.\r\n"]
+[22.236105, "o", "PR watch at Wed, Nov 11, 17:45 EST: a review is due, so the shepherd is starting a review run.\r\n"]
+[26.871109, "o", "PR watch at Wed, Nov 11, 18:03 EST: regular run for the Wed, Nov 11, 18:00 EST slot.\r\n"]
+[31.428185, "o", "PR watch at Wed, Nov 11, 18:45 EST: nothing new, so the shepherd didn't run.\r\n"]
+[31.433634, "x", "0"]

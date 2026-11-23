@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# watch-runs <parent> [<stop-regex>] [<ignore-regex>]: kubectl get -w on a schedule's runs;
+# stops after a line matches <stop-regex> (default: a run that finished) unless it also
+# matches <ignore-regex>.
+parent=$1; re=${2:-'Succeeded|Failed'}; ign=${3:-'^$'}
+fifo=$(mktemp -u); mkfifo "$fifo"
+kubectl --context h100 -n orka-system get tasks -l "orka.ai/parent-task=$parent" -w > "$fifo" 2>&1 &
+kpid=$!
+while IFS= read -r line; do
+  printf '%s\n' "$line"
+  if [[ $line =~ $re ]] && ! [[ $line =~ $ign ]]; then break; fi
+done < "$fifo"
+kill "$kpid" 2>/dev/null; rm -f "$fifo"

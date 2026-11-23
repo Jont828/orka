@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Orka PR shepherd</title>
+<style>
+  :root { --ink: #0d1117; --muted: #57606a; --line: #d0d7de; --blue: #0969da; --green: #1a7f37; --orange: #bc4c00; --bg: #f6f8fa; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1280px; height: 720px; background: #fff; color: var(--ink);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+  .wrap { padding: 44px 56px 0; }
+  h1 { margin: 0; font-size: 38px; letter-spacing: -0.5px; }
+  .sub { margin: 6px 0 0; color: var(--muted); font-size: 18px; }
+  .flow { display: grid; grid-template-columns: 1fr 34px 1.15fr 34px 1.25fr 34px 1.2fr; align-items: stretch; margin-top: 40px; }
+  .box { border: 1.5px solid var(--line); border-radius: 12px; padding: 16px 16px 14px; background: #fff; }
+  .box h3 { margin: 0 0 6px; font-size: 16px; }
+  .box p { margin: 0; color: var(--muted); font-size: 13.5px; }
+  .box ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: 13.5px; }
+  .box li { margin: 2px 0; }
+  .tag { display: inline-block; font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase;
+    letter-spacing: .5px; padding: 4px 7px; border-radius: 999px; margin-bottom: 8px; }
+  .t-orka { background: #ddf4ff; color: var(--blue); }
+  .t-gate { background: #fff8c5; color: #7d4e00; }
+  .t-agent { background: #fbefff; color: #8250df; }
+  .t-gh { background: #dafbe1; color: var(--green); }
+  .arrow { display: flex; align-items: center; justify-content: center; color: #8c959f; font-size: 22px; }
+  code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); padding: 1px 5px; border-radius: 5px; color: var(--ink); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; margin-top: 28px; }
+  .note { border-radius: 12px; background: var(--bg); padding: 14px 16px; font-size: 13.5px; color: var(--muted); }
+  .note b { color: var(--ink); }
+  .foot { position: absolute; left: 56px; right: 56px; bottom: 30px; display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Orka PR shepherd + review assistant</h1>
+  <p class="sub">A scheduled Orka Task that moves Jont828's ai-dynamo/dynamo PRs toward merge, and reviews them before maintainers do.</p>
+
+  <div class="flow">
+    <div class="box">
+      <span class="tag t-orka">Orka Task</span>
+      <h3>Schedule</h3>
+      <p><code>*/15 * * * *</code>, <code>Forbid</code><br>Container on the h100 AKS cluster, tokens from Kubernetes Secrets.</p>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box">
+      <span class="tag t-gate">Gate · seconds</span>
+      <h3>watch.mjs</h3>
+      <ul>
+        <li>regular run every 2 hours</li>
+        <li>new merge conflict</li>
+        <li>new failed checks</li>
+        <li>review due (new commits)</li>
+        <li>otherwise: stop</li>
+      </ul>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box">
+      <span class="tag t-agent">Agent</span>
+      <h3>Copilot CLI + pr-shepherd skill</h3>
+      <ul>
+        <li>A · rebase, with a backup</li>
+        <li>B · diagnose CI</li>
+        <li>C · settle CodeRabbit threads</li>
+        <li>R · self-review, refuted by a subagent</li>
+        <li>S · review brief for maintainers</li>
+      </ul>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box">
+      <span class="tag t-gh">GitHub + report</span>
+      <h3>Acts as the author</h3>
+      <ul>
+        <li>signed commits, <code>--force-with-lease</code></li>
+        <li>thread replies, one brief comment</li>
+        <li>report = the Orka Task result</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="row2">
+    <div class="note"><b>Fail-safe by design.</b> One fix commit per PR per run, nothing pushed that wasn't validated, no pushes after an approval, never merges or pings maintainers unasked.</div>
+    <div class="note"><b>Knows its own work.</b> Its commits carry the cluster's SSH signature and an <code>Automated-by: pr-shepherd</code> trailer, so they never trigger a new review.</div>
+    <div class="note"><b>Shadow → live.</b> Upstream runs in shadow mode (brief in the report only). This demo runs <b>live</b> on a sandbox PR inside the fork.</div>
+  </div>
+</div>
+<div class="foot"><span>Orka 0.3.0 · kube context h100 · namespace orka-system</span><span>Demo recorded Nov 11, 2026</span></div>
+</body>
+</html>

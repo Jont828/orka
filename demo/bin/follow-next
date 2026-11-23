@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# follow-next <schedule> <run>...: follow the log of the schedule's first run that isn't one
+# of the given runs and that does more than the gate (skips slots where nothing was due).
+s=$1; shift; k="kubectl --context h100 -n orka-system"
+seen=" $* "
+while :; do
+  for t in $($k get tasks -l "orka.ai/parent-task=$s" --sort-by=.metadata.creationTimestamp -o name 2>/dev/null); do
+    t=${t#*/}
+    case "$seen" in *" $t "*) continue ;; esac
+    j=$($k get task "$t" -o jsonpath='{.status.jobName}' 2>/dev/null)
+    [ -n "$j" ] || continue
+    first=$($k logs "job/$j" 2>/dev/null | head -n 1)
+    [ -n "$first" ] || continue
+    case "$first" in *"didn't run"*) seen="$seen$t "; continue ;; esac
+    echo "$t" > /tmp/orka-demo-next-run
+    exec $k logs -f "job/$j"
+  done
+  sleep 3
+done

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# follow-run <task>: wait for a run's Job, then stream its log from the start to the end.
+t=$1; k="kubectl --context h100 -n orka-system"
+until j=$($k get task "$t" -o jsonpath='{.status.jobName}' 2>/dev/null) && [ -n "$j" ]; do sleep 2; done
+until $k logs "job/$j" >/dev/null 2>&1; do sleep 2; done
+exec $k logs -f "job/$j"

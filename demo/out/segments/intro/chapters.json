@@ -1,0 +1,54 @@
+{
+  "part": "intro",
+  "label": "Intro",
+  "title": "Orka and the PR shepherd",
+  "subtitle": "What Orka is, how the shepherd runs on it, and what it handles",
+  "recorded": "Nov 11, 2026",
+  "key": "intro",
+  "duration": 103.6333,
+  "chapters": [
+    {
+      "key": "orka",
+      "label": "What Orka is",
+      "subtitle": "A Kubernetes-native platform that runs container and AI-agent Tasks",
+      "start": 0.0,
+      "browser": "slide-orka",
+      "end": 23.371
+    },
+    {
+      "key": "shepherd",
+      "label": "The PR shepherd",
+      "subtitle": "One scheduled Task: a gate every 15 minutes, an agent only when needed",
+      "start": 23.371,
+      "browser": [
+        "slide-shepherd@12",
+        "orka-prod@start~report"
+      ],
+      "end": 52.359
+    },
+    {
+      "key": "handles",
+      "label": "What it handles",
+      "subtitle": "Each capability is a step of the pr-shepherd skill",
+      "start": 52.359,
+      "browser": "slide-steps",
+      "end": 73.211
+    },
+    {
+      "key": "demos",
+      "label": "How the demos run",
+      "subtitle": "A copy of the Task, every 5 minutes, on sandbox PRs inside the fork",
+      "start": 73.211,
+      "browser": "orka-run-live@start~run",
+      "end": 88.468
+    },
+    {
+      "key": "guardrails",
+      "label": "What it never does",
+      "subtitle": "It acts as the author, within limits, and reports everything",
+      "start": 88.468,
+      "browser": "slide-guardrails",
+      "end": 103.6333
+    }
+  ]
+}

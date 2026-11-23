@@ -1,0 +1,1 @@
+kubectl --context h100 -n orka-system get task dynamo-pr-shepherd -o custom-columns=NAME:.metadata.name,SCHEDULE:.spec.schedule,TZ:.spec.timeZone,POLICY:.spec.concurrencyPolicy,NEXT:.status.nextScheduleTime

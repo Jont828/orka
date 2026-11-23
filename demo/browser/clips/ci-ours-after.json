@@ -1,0 +1,24 @@
+{
+  "scene": "ci-ours-after",
+  "ok": true,
+  "duration": 29.227,
+  "start": 4.67,
+  "marks": [
+    {
+      "t": 4.67,
+      "label": "start"
+    },
+    {
+      "t": 9.681,
+      "label": "commit"
+    },
+    {
+      "t": 22.695,
+      "label": "checks"
+    },
+    {
+      "t": 29.227,
+      "label": "end"
+    }
+  ]
+}

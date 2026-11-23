@@ -1,0 +1,96 @@
+{
+  "duration": 345.021,
+  "chapters": [
+    {
+      "key": "intro",
+      "title": "Orka PR shepherd + review assistant",
+      "subtitle": "A scheduled Orka Task that moves PRs toward merge and reviews them",
+      "start": 0.0,
+      "browser": "title",
+      "end": 13.0
+    },
+    {
+      "key": "prod",
+      "title": "1. The production schedule",
+      "subtitle": "Live since Nov 9 on the h100 AKS cluster, for Jont828's PRs in ai-dynamo/dynamo",
+      "start": 13.0,
+      "browser": [
+        "orka-prod",
+        "upstream-prod"
+      ],
+      "end": 58.48
+    },
+    {
+      "key": "sandbox",
+      "title": "2. A sandbox PR in the fork",
+      "subtitle": "Jont828/dynamo#11: orka-demo/quantity-parser -> orka-demo/base (never upstream)",
+      "start": 58.48,
+      "browser": "pr-before",
+      "end": 89.163
+    },
+    {
+      "key": "conflict",
+      "title": "3. The base branch moves",
+      "subtitle": "A change lands on orka-demo/base that touches the same README line",
+      "start": 89.163,
+      "browser": "pr-conflict",
+      "end": 119.898
+    },
+    {
+      "key": "schedule",
+      "title": "4. A demo schedule pointed at the fork",
+      "subtitle": "Same image, bootstrap, gate and skill as production; only these settings differ",
+      "start": 119.898,
+      "browser": "orka-run-live@start-run",
+      "end": 141.632
+    },
+    {
+      "key": "run1",
+      "title": "5. The next slot: a run scoped to the problems",
+      "subtitle": "18:35: the gate gives the agent steps A (rebase) and B (CI) for PR #11",
+      "start": 141.632,
+      "browser": "orka-run-live@run-end",
+      "end": 175.14
+    },
+    {
+      "key": "result1",
+      "title": "6. Rebased, re-signed, backed up",
+      "subtitle": "Conflict gone, the CI failure diagnosed, and the next slot already reviewing",
+      "start": 175.14,
+      "browser": "pr-rebased",
+      "end": 207.942
+    },
+    {
+      "key": "run2",
+      "title": "7. The next slot: a review run",
+      "subtitle": "18:41: the head is new and mergeable, so steps C, R and S start (live mode)",
+      "start": 207.942,
+      "browser": "orka-review-live",
+      "end": 245.252
+    },
+    {
+      "key": "result2",
+      "title": "8. Fixed, answered and briefed",
+      "subtitle": "One signed fix commit, the CodeRabbit thread settled, a brief for maintainers",
+      "start": 245.252,
+      "browser": "pr-reviewed",
+      "end": 294.755
+    },
+    {
+      "key": "quiet",
+      "title": "9. Then the watch goes quiet",
+      "subtitle": "The shepherd's own fix doesn't start another review",
+      "start": 294.755,
+      "browser": "orka-result-2",
+      "end": 330.021
+    },
+    {
+      "key": "outro",
+      "title": "What the shepherd did, unattended",
+      "subtitle": "Two agent runs, about 15 minutes in all; nobody touched the PR after the base push",
+      "start": 330.021,
+      "browser": "outro",
+      "end": 345.021
+    }
+  ]
+}

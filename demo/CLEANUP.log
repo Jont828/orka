@@ -1,0 +1,15 @@
+disabled-for-demo: Trigger CI Approval Flow (Jont828/dynamo) at Wed Nov 11 18:11:52 EST 2026
+playwright-ffmpeg-wrapper: /Users/jonathan/Library/Caches/ms-playwright/ffmpeg-1011/ffmpeg-mac -> /opt/homebrew/bin/ffmpeg (remove ~/Library/Caches/ms-playwright/ffmpeg-1011 to undo)
+suspended-demo-schedule: task/dynamo-pr-shepherd-demo (orka-system, h100) at Wed Nov 11 18:55:22 EST 2026
+re-enabled: Trigger CI Approval Flow (Jont828/dynamo) at Wed Nov 11 18:55:31 EST 2026
+disabled-for-demo-rework: Trigger CI Approval Flow (Jont828/dynamo) at Tue Nov 17 17:58:22 EST 2026
+base-ci-change: orka-demo/base 5998863 -> b92f938 (ci(demo): test the PR head with all deploy/utils unit tests) at Tue Nov 17 17:58:22 EST 2026
+demo-task-review-off: dynamo-pr-shepherd-demo SHEPHERD_REVIEW live -> off for the CI demos at Tue Nov 17 18:00:08 EST 2026
+resumed-demo-schedule (3a): Tue Nov 17 18:11:34 EST 2026
+suspended-demo-schedule (after 3a): Tue Nov 17 18:29:18 EST 2026
+base-regression: orka-demo/base b92f938 -> 07a80bb (refactor: drop single-letter tokens) at Tue Nov 17 18:38:02 EST 2026
+base-fix: orka-demo/base 07a80bb -> 367a899 (fix: quote y and n again) at Tue Nov 17 18:42:31 EST 2026
+resumed-demo-schedule (3b): Tue Nov 17 18:43:02 EST 2026
+suspended-demo-schedule (after 3b): Tue Nov 17 18:51:57 EST 2026
+re-enabled: Trigger CI Approval Flow (Jont828/dynamo) at Tue Nov 17 19:01:17 EST 2026
+demo-task-review-live-again: SHEPHERD_REVIEW off -> live (still suspended) at Tue Nov 17 19:01:22 EST 2026

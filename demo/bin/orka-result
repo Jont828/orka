@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# orka-result <task>: print an Orka Task's result (for the shepherd, its report) through
+# the API at localhost:18080 (kubectl port-forward svc/orka 18080:8080).
+set -euo pipefail
+TOKEN=$(kubectl --context h100 -n orka-system create token orka-client --duration=10m)
+curl -fsS -H "Authorization: Bearer $TOKEN" "http://localhost:18080/api/v1/tasks/$1/result?namespace=orka-system" | jq -r '.result // empty'

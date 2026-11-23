@@ -1,0 +1,8 @@
+NAME                                 TYPE        PHASE   PRIORITY   AGE
+dynamo-pr-shepherd-demo-1794440100   container           500        0s
+dynamo-pr-shepherd-demo-1794440100   container           500        0s
+dynamo-pr-shepherd-demo-1794440100   container   Pending   500        0s
+dynamo-pr-shepherd-demo-1794440100   container   Running   500        0s
+dynamo-pr-shepherd-demo-1794440100   container   Succeeded   500        6m5s
+/Users/jonathan/orka-demo/pr-shepherd/bin/watch-runs: line 13: syntax error near unexpected token `then'
+/Users/jonathan/orka-demo/pr-shepherd/bin/watch-runs: line 13: `] && ! [[ $line =~ $ign ]]; then break; fi'

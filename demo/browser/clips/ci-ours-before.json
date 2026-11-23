@@ -1,0 +1,20 @@
+{
+  "scene": "ci-ours-before",
+  "ok": true,
+  "duration": 19.073,
+  "start": 1.294,
+  "marks": [
+    {
+      "t": 1.294,
+      "label": "start"
+    },
+    {
+      "t": 10.743,
+      "label": "job"
+    },
+    {
+      "t": 19.073,
+      "label": "end"
+    }
+  ]
+}

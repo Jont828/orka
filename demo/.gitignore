@@ -1,0 +1,4 @@
+# Not tracked here: Playwright's packages (cd browser && npm ci) and the sparse clone of
+# Jont828/dynamo the sandbox PRs were made from (their orka-demo/* branches are on the fork).
+browser/node_modules/
+sandbox/dynamo/

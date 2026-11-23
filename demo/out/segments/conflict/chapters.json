@@ -1,0 +1,46 @@
+{
+  "part": "conflict",
+  "label": "2",
+  "title": "Merge conflict → rebase",
+  "subtitle": "The base moves under the PR: backup, rebase, resolve, validate, push with a lease",
+  "recorded": "Nov 11, 2026",
+  "key": "conflict",
+  "duration": 100.8333,
+  "chapters": [
+    {
+      "key": "setup",
+      "label": "Setup",
+      "subtitle": "A change lands on orka-demo/base and edits the same README line as PR #11",
+      "start": 0.0,
+      "browser": [
+        "opener-conflict",
+        "pr-conflict"
+      ],
+      "end": 28.499
+    },
+    {
+      "key": "notice",
+      "label": "The gate notices",
+      "subtitle": "Within one slot (15 minutes, 5 in the demo): a new merge conflict",
+      "start": 28.499,
+      "browser": "log-run1-a@start~work",
+      "end": 43.255
+    },
+    {
+      "key": "work",
+      "label": "The agent works",
+      "subtitle": "Backup, rebase, resolve, validate, then push with a lease",
+      "start": 43.255,
+      "browser": "log-run1-a@work~end",
+      "end": 73.958
+    },
+    {
+      "key": "result",
+      "label": "Result",
+      "subtitle": "Conflict gone: both README lines kept, commits re-signed, old head backed up",
+      "start": 73.958,
+      "browser": "pr-rebased@start~checks",
+      "end": 100.8333
+    }
+  ]
+}

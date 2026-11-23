@@ -1,0 +1,64 @@
+[bootstrap 17:11:16] installing gh 2.103.3, uv 0.13.7, copilot 1.0.105
+[bootstrap 17:11:33] configuring git and cloning Jont828/dynamo
+
+===== PR SHEPHERD REPORT =====
+[bootstrap 17:11:47] running Copilot CLI (claude-opus-5.5, effort xhigh); report follows
+Starting DRY RUN: verifying environment first.
+
+All four environment checks pass; the test commit was left unreachable on the detached HEAD. Next: triaging open PRs.
+
+Single open PR: #17372 (docs examples catalog). Gathering checks, reviews, threads, and comments.
+
+CI: only `lychee` failed; ~15 jobs still pending. All 14 CodeRabbit threads are resolved. Next I'll check the lychee logs, the CodeRabbit review body for nitpicks, and the earlier ping comment.
+
+No CodeRabbit nitpick/outside-diff items. Previous ping was 2026-11-04 (≈3 business days ago). Now finding which links lychee flagged.
+
+Lychee's only errors are two 404s in `snapshot.mdx` pointing to `ai-dynamo/snapshot`. Checking whether this PR touches that file and whether main/other PRs fail the same way.
+
+Lychee also runs on push to main. Checking recent main and other-PR runs, plus whether lychee is a required check.
+
+Upstream changed three launch scripts the catalog probably embeds. Checking whether any change would need porting into the PR's pages.
+
+Upstream script edits are trivial and pages embed them via `<Code src>`, so a future rebase needs no porting. Last, I'll check the in-progress CI run and recheck merge state.
+
+Triage is done. Cleaning up temporary files and confirming the worktree is clean.
+
+DRY RUN: nothing was written to GitHub and nothing was pushed.
+
+**Environment checks**
+- OK: `gh api user --jq .login` prints Jont828.
+- OK: `git fetch upstream main` and `git fetch origin` both exit 0.
+- OK: an empty signed-off commit on a detached HEAD passed `git verify-commit` (good ED25519 signature, jt572@cornell.edu). I then discarded it.
+- OK: `pre-commit --version` prints pre-commit 4.7.0.
+
+**Needs your attention**
+1. The `lychee` link check fails on main and on almost every open PR, including this one. ai-dynamo/snapshot#786 moved its docs today, which broke two links in upstream's `snapshot.mdx`. This PR doesn't touch that file, and lychee isn't a required check. No fix exists on main or in an open PR. A separate upstream PR could repoint the links:
+   - `docs/operations/storage.md` → `docs/operate/configure-storage.md`
+   - `docs/operations/troubleshooting.md` → a page under `docs/troubleshooting/`
+   - `install.md` on line 116 → `docs/get-started/installation.md`. It also returns 404 but isn't reported yet, probably because lychee's cache still has it.
+2. The PR still needs codeowner approvals and has had no human review in 13 days.
+
+---
+
+**[#17372](https://github.com/ai-dynamo/dynamo/pull/17372)** (docs: examples catalog and deployment customizer)
+**Status:** BLOCKED but MERGEABLE, REVIEW_REQUIRED, not a draft. Head is 9def7ea, 14 commits behind main.
+
+**What I would do (and did not do)**
+- **Rebase (A): none.** The PR is BLOCKED, not DIRTY or BEHIND, and a rebase wouldn't fix the lychee failure. Upstream changed three launch scripts since the merge base, but the pages embed them with `<Code src>`, so a later rebase needs no porting.
+- **CI fix (B): none.** The failure comes from upstream main, not this PR's code. I'm highly confident: every main run since 12:13Z today fails on the same two links, and runs before that passed.
+  - The required checks haven't reported yet: 8 jobs are still running and the gate jobs haven't started.
+  - Every other completed job passed.
+- **CodeRabbit (C): nothing to do.** All 14 threads are resolved and there are no nitpick or outside-diff items.
+- **Human reviews (D):** none.
+- **Approved (E):** not applicable.
+- **Codeowner ping (F): I would not ping.** CI is still running and lychee is failing, and lychee is broken upstream rather than flaky. Your last ping was Wed 11/04 at 4:43 PM, just outside the 3-business-day window, so a later run could ping once CI is green.
+
+**Waiting on you**
+- Approvals from @ai-dynamo/dynamo-docs-codeowners and the vllm, sglang, and trtllm backend codeowners (one `deploy/README.md` each).
+- Decide whether to treat lychee as non-blocking for the next ping.
+
+**Age (G):** open 13 days (flagged). Last activity was a push today.
+
+
+===== END REPORT =====
+

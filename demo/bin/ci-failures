@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# ci-failures <pr> [head]: the failing tests from the latest failed orka-demo-ci run on the PR's
+# head commit (or on the given earlier head), in Jont828/dynamo.
+set -euo pipefail
+pr=$1; repo=Jont828/dynamo
+head=${2:-$(gh pr view "$pr" -R "$repo" --json headRefOid -q .headRefOid)}
+head=$(gh api "repos/$repo/commits/$head" -q .sha)
+id=$(gh run list -R "$repo" --commit "$head" --workflow orka-demo-ci --json databaseId,conclusion \
+  -q 'map(select(.conclusion == "failure"))[0].databaseId // empty')
+if [ -z "$id" ]; then echo "no failed orka-demo-ci run at ${head:0:7}"; exit 0; fi
+echo "orka-demo-ci run $id at ${head:0:7}, failing tests:"
+gh run view "$id" -R "$repo" --log-failed | cut -f3- | sed -E 's/^[0-9T:.-]+Z //' \
+  | grep -E '^(E   |FAILED |[0-9]+ (passed|failed))' | sed -E 's/ - ([A-Za-z]+Error: |assert ).*//; s#^FAILED deploy/utils/tests/#FAILED #' \
+  | awk '{ if (length($0) > 98) print substr($0, 1, 97) "…"; else print }'

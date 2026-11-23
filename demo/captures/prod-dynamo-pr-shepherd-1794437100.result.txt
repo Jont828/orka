@@ -1,0 +1,119 @@
+PR watch at Wed, Nov 11, 17:45 EST: a review is due, so the shepherd is starting a review run.
+- #17372 (head 279deed): no merge conflict; CI passed (128 checks); reviewed at this head
+- #18569 (head 1c7b030): no merge conflict; CI passed (83 checks); reviewed at this head
+- #18618 (head 1f8c8ca): no merge conflict; CI passed (124 checks); review due (full review)
+- #18619 (head 55812bd): no merge conflict; CI running (1 of 83 checks pending); review waits until the head is 60 minutes old (now 41)
+[bootstrap 17:45:08] installing gh 2.103.3, uv 0.13.7, copilot 1.0.105
+[bootstrap 17:45:21] configuring git and cloning Jont828/dynamo
+
+===== PR SHEPHERD REPORT =====
+[bootstrap 17:45:35] running Copilot CLI (claude-opus-5.5, effort xhigh); report follows
+Starting the triggered review of PR #18618: first preflight (fetch) and re-triage.
+
+Three unanswered CodeRabbit threads, no approvals. Reading the full comments, PR comments, and checks.
+
+CI is green (76 pass, 48 skipped). Checking out the head and reading the diff.
+
+Now the manifests, conftest/README diffs, and unit tests.
+
+Read the full diff. Now loading the review rubric from upstream/main and the conventions that the tests rely on.
+
+Checking CI marker selectors, marker registration, and sibling deploy tests for conventions.
+
+`cross-version-compatibility.yml` selects `-m k8s`; checking which test path it runs, since that could select this test.
+
+The sequential CPU job (`pre_merge and not parallel and not defaulted ...`) selects `test_slime_utils.py`; I'll confirm it ran. Reading the unit tests now.
+
+CI's sequential job ran and passed the 10 unit tests. Now running them and pre-commit locally.
+
+pre-commit passes. The local pytest run needs `pydantic` for a configured warning filter; installing it.
+
+`ManagedDeployment` has its own `cleanup_errors` list; checking whether callers are expected to assert on it.
+
+Checking whether `ManagedDeployment` clears its log directory, since the test writes `setup-job.log` to the same directory beforehand.
+
+No log-dir clobbering. Checking `tests/AGENTS.md`'s guidance: is there a shared helper for parsing `Selected worker` routing events?
+
+`predownload_models` isn't autouse, so no local download. Checking `DeploymentSpec` support for v1beta1 `components` and `set_image(service_name=...)`.
+
+Code paths check out so far. Next, verifying the PR's claim that `slime/` matches the tutorial in #18569 at its current head, since the tutorial may have moved since.
+
+Tutorial PR head moved from `718f4ab794` to `1c7b0302e1`. Fetching it to compare the heredoc manifests against `tests/deploy/slime/`.
+
+No manifest changes in the tutorial since `718f4ab794`. Independently verifying the "parse identical" claim at the tutorial's current head.
+
+The ConfigMap differs; inspecting how the tutorial builds it.
+
+That's an artifact of my extraction: the bash heredoc keeps the final newline. Confirming:
+
+No CI selector matches the e2e test, as the PR states. Checking README placeholder conventions for CodeRabbit's first thread.
+
+The link in my reply points to line 31, but the `ls` command is on line 32. I'm fixing my own comment:
+
+While CodeRabbit answers, I'll validate the README fix and have a fresh subagent check the diff.
+
+CONFIRMED: fixes exactly the listed item.
+
+1. Yes. The placeholder is now `your-rwx-storage-class`, safe for bash.
+2. No extra changes; only that one line changed.
+3. No other angle-bracket placeholders appear in the Slime bash block.Pre-commit passes, and the subagent confirmed the diff touches only that one line. Now I'll check whether CodeRabbit has answered thread 2:
+
+CodeRabbit withdrew thread 2. Next I'll re-check approvals and the remote head, then commit and push.
+
+There are still no approvals, and CodeRabbit resolved thread 2 itself. Committing and pushing:
+
+Pushed `751587a` (signed). Now I'll reply on thread 1 and resolve it:
+
+Before I write the brief, I'm re-reading the PR state after the push and cleaning up the temp files:
+
+I reviewed #18618 and pushed one CodeRabbit fix (`751587a`). One CodeRabbit thread still needs your decision.
+
+**Triggered by the PR watch:** full review (steps C, R, S) of #18618 at head `1f8c8ca`. Review mode is shadow, so the brief below was not posted.
+
+## Needs your attention
+1. **CodeRabbit thread on `delete_leftovers`** (`slime_utils.py:558`, [thread](https://github.com/ai-dynamo/dynamo/pull/18618#discussion_r4543596050)), unanswered on purpose. The finding is valid: in a namespace that already exists, the test deletes any object with a tutorial name, including the `slime-data` PVC. That can delete someone's live tutorial run and its data.
+   - **Recommended:** label everything the test creates, for example `dynamo.nvidia.com/slime-e2e: "true"`. Before deleting a leftover, read it and delete it only if it has the label. Fail with a clear message if an unlabeled object with the same name exists.
+   - This changes the behavior the README documents and needs a cluster to test, so I didn't change it.
+2. The PR is still WIP: the e2e test hasn't run on a cluster yet.
+
+## #18618: open, not a draft, BLOCKED (review required), no approvals
+- **Actions**
+  - Pushed `751587a`, signed and signed off: the README's storage-class placeholder `<rwx-storage-class>` is now `your-rwx-storage-class`, because bash reads `<` and `>` as redirection. I replied on that thread and resolved it.
+  - Declined the request to check for the `train.parquet` file, not just its directory. The setup Job comes from the tutorial and only lists directories, and a missing file still fails the RayJob. CodeRabbit withdrew the finding and resolved the thread itself.
+  - No rebase, so no backup branch was needed.
+- **CI:** everything passed at `1f8c8ca`. At `751587a`, dynamo-ops posted `/ok to test`; 14 checks have passed and 10 are pending, with no failures.
+- **Self-review:** no P0–P2 findings, so nothing for a subagent to refute and no fix diff. Nothing fixed, declined, or pre-existing; one question for maintainers (in the brief).
+- **Verified:**
+  - All seven manifests parse identical to the tutorial's (#18569 at `1c7b030`).
+  - KubeRay 1.7.1 keeps the submitter Job after shutdown, so the driver log stays readable.
+  - The routing check matches the "Selected worker" log line in Dynamo 1.6.1.
+  - No CI job selects the e2e test.
+  - pre-commit passes, and the unit tests give 10 passed, 1 skipped.
+
+## Brief (not posted)
+```markdown
+<!-- pr-shepherd:review-brief head=751587aae36afd8d1c774ecb0c2deae114ba2c5a -->
+**Review brief** for 751587a, written by the author's automated PR assistant.
+
+**What it does:** Adds an opt-in test that applies the Slime tutorial's (#18569) seven manifests to the current kubectl context and runs the tutorial's checks, plus unit tests for its helpers. Tests and test docs only.
+**Risk:** Low. No core code changes, and no CI job selects the e2e test; only the `unit`/`pre_merge`/`gpu_0` helper tests run in CI. On a cluster it deletes objects with the tutorial's names in an existing namespace (open thread).
+**Where to look:**
+- [slime_utils.py `delete_leftovers`](https://github.com/Jont828/dynamo/blob/751587aae36afd8d1c774ecb0c2deae114ba2c5a/tests/deploy/slime_utils.py#L545): deletes objects by name, including the `slime-data` PVC.
+- [tests/deploy/slime/](https://github.com/Jont828/dynamo/tree/751587aae36afd8d1c774ecb0c2deae114ba2c5a/tests/deploy/slime): hand-synced copies of the tutorial's manifests.
+- [test_slime_kuberay.py checks](https://github.com/Jont828/dynamo/blob/751587aae36afd8d1c774ecb0c2deae114ba2c5a/tests/deploy/test_slime_kuberay.py#L285): exact counts (640 requests, 11 weight loads) parsed from the 1.6.1 logs.
+**Decisions for reviewers:**
+1. Keep hand-synced copies of the tutorial's manifests, or add a parity check against the tutorial page once #18569 merges?
+**Checked:** CI was green at 1f8c8ca and is running at 751587a. pre-commit and the unit tests (10 passed, 1 skipped) pass. The manifests parse identical to #18569's. Self-review found nothing to fix. CodeRabbit: 1 fixed (751587a), 1 declined, 1 open.
+**Still open:** a cluster run of the e2e test (WIP); the `delete_leftovers` ownership thread.
+
+<details><summary>Declined CodeRabbit suggestions (1)</summary>
+
+- Check for `train.parquet`, not only its directory: the tutorial's setup Job lists only directories, and a missing file fails the RayJob with the driver log's tail. CodeRabbit withdrew it. [thread](https://github.com/ai-dynamo/dynamo/pull/18618#discussion_r4543596045)
+</details>
+```
+
+Temp files and the extra local ref are removed, and the worktree is clean (detached at `751587a`).
+
+
+===== END REPORT =====
+

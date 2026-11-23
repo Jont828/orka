@@ -1,0 +1,20 @@
+{
+  "scene": "orka-result-2",
+  "ok": true,
+  "duration": 28.177,
+  "start": 5.556,
+  "marks": [
+    {
+      "t": 5.556,
+      "label": "start"
+    },
+    {
+      "t": 20.898,
+      "label": "schedule"
+    },
+    {
+      "t": 28.177,
+      "label": "end"
+    }
+  ]
+}

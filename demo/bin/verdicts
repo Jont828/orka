@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# verdicts <schedule> [n]: the PR watch gate's decision (the first log line) for the
+# schedule's last n runs.
+s=$1; n=${2:-6}; k="kubectl --context h100 -n orka-system"
+for t in $($k get tasks -l "orka.ai/parent-task=$s" --sort-by=.metadata.creationTimestamp -o name | tail -n "$n"); do
+  $k logs "job/$($k get "$t" -o jsonpath='{.status.jobName}')" 2>/dev/null | head -n 1
+done

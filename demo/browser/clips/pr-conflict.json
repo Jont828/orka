@@ -1,0 +1,20 @@
+{
+  "scene": "pr-conflict",
+  "ok": true,
+  "duration": 21.523,
+  "start": 2.024,
+  "marks": [
+    {
+      "t": 2.024,
+      "label": "start"
+    },
+    {
+      "t": 9.962,
+      "label": "compare"
+    },
+    {
+      "t": 21.523,
+      "label": "end"
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+[bootstrap 20:11:56] installing gh 2.103.3, uv 0.13.7, copilot 1.0.105
+[bootstrap 20:12:10] configuring git and cloning Jont828/dynamo
+[bootstrap 20:12:23] running Copilot CLI (claude-opus-5.5, effort xhigh); report follows
+
+===== PR SHEPHERD REPORT =====
+I'll start with the dry-run environment checks.
+
+The fetch exit codes above came from `tail`. I'll re-check them directly and run the signing test.
+
+All four environment checks pass, and the test commit is discarded. Next, triage the open PRs.
+
+Two open PRs: #17372 and #15671. Next I'll pull their details: checks, reviews, comments, and review threads.
+
+Both PRs fail CI on container builds (sglang cuda13 was cancelled; vllm cuda13 failed). Next I'll fetch reviews and threads over GraphQL.
+
+All review threads on both PRs are resolved. Next I'll check PR-level comments and the full text of [reviewer A]'s review body.
+
+No unresolved threads remain. I'll read the full human comments on #15671 and the ping comment on #17372, which I need to check for the marker.
+
+Triage so far: both PRs are REVIEW_REQUIRED, all threads resolved, and #17372 already got a marked codeowner ping today. Next I'll check CI run attempts and the failing job logs.
+
+Neither run has been re-run. Next I'll pull the failing job logs.
+
+The log lines are very long. I'll narrow to `##[error]` markers and the log tail.
+
+The vLLM failure is an NVIDIA CUDA apt mirror out of sync ("Mirror sync in progress?"), which is an infra flake. Next I'll check the EFA job and the cancelled sglang job.
+
+The EFA job hit the same CUDA mirror error. The sglang job was cancelled at about 60 minutes while still compiling. I'll confirm the timeout and the timeline.
+
+I'll check the step structure to see whether the main image build finished before the cancellation.
+
+The build job has a 60-min `build_timeout_minutes`. Next I'll compare the same jobs on other recent PR runs and on main runs.
+
+I'll scan the jobs across PR and post-merge runs from the last ~48h to see whether these build failures recur.
+
+While the scan runs, I'll check whether upstream/main has commits since each PR's merge base that could fix these failures.
+
+No fixing commit exists on main for either failure. Next I'll check whether Jont828 can re-run workflows, which needs write access, and whether the 16 newer main commits touch #17372's file group.
+
+Jont828 has only `pull` permission on ai-dynamo/dynamo, so `gh run rerun` isn't permitted; the procedure says to report instead. I'll wait for the history scan to finish.
+
+Those references are pre-existing redirects, not catalog entries, so there's no semantic drift concern. I'll wait for the scan.
+
+While the scan runs, I'll work out which codeowners are still pending for #15671, using the repo's `who_owns.py`.
+
+Owners for #15671 are the docs and vLLM codeowner teams. I'll check which of those teams [reviewer B]'s approval covers and whether [reviewer A] is a docs codeowner.
+
+Team membership isn't visible with this token. I'll try the GraphQL `onBehalfOf` field on reviews instead.
+
+Requested-reviewer teams come back null here, so the token can't see them. #15671 has 1 pending team request and #17372 has 7. I'll check `areas.yaml` for team members.
+
+Team membership isn't recorded in the repo, so I'll report the pending #15671 team as likely docs-codeowners (Medium confidence). Checking the scan.
+
+The scan has been running about 14 minutes with buffered output. I'll check that it's still making progress.
+
+The scan works but is slow (~7 s per call, sequential). I'll restart it in parallel.
+
+The scan finished; a short row broke the summary step. I'll analyze the saved results.
+
+The section regex matched nothing. I'll grep the CodeRabbit bodies more loosely.
+
+CodeRabbit has no unanswered items on either PR. For a fuller setup check, I'll run pre-commit on #15671's small diff in a detached checkout (local only) to confirm hook environments install.
+
+pre-commit works (exit 0). One more semantic check for #15671: the PR renames `agg_realtime_transcription.sh`, so I'll look for new references to the old name added on main since its October 26 base.
+
+`git grep` across all of upstream/main forces on-demand blob fetches in this partial clone and is slow. I'll stop it and use GitHub code search plus a narrower diff.
+
+Main references the old name only in the two files the PR already updates. I'll check whether main changed any PR-touched paths since the base.
+
+Main has added `examples/backends/vllm/launch/agg_transcription.sh`, which may overlap with this PR's `agg_asr*` launchers. I'll look at what it is.
+
+#16208 added only the launcher with no docs, so this is an FYI, not a blocker. Analysis is done; I'll clean up temp files and confirm the worktree is clean.
+
+The worktree is clean on `main`. Origin already has 21 `backup/*` branches, none from this run. I'll list them for the report.
+
+DRY RUN: nothing was written to GitHub and nothing was pushed. Neither PR needs a rebase, a code fix or a CodeRabbit fix. Both are failing CI because of CI infrastructure problems.
+
+**Environment checks**
+- `gh api user` prints Jont828: OK
+- `git fetch upstream main` and `git fetch origin`: OK
+- Signed `-s` commit on a detached HEAD, then `git verify-commit`: OK (good ED25519 signature). The test commit was discarded.
+- `pre-commit --version`: OK (4.7.0). I also ran the hooks on #15671's diff and they all passed.
+- Your account only has read access to ai-dynamo/dynamo, so `gh run rerun` won't work for you. The token also can't see which teams the pending review requests are for.
+
+**Needs your attention**
+1. Both PRs need a maintainer to re-run the failed CI jobs. You already asked for #17372 in today's ping; nobody has asked for #15671 yet (run 41907181822).
+2. #15671 still needs one codeowner team. It's probably `@ai-dynamo/dynamo-docs-codeowners` (medium confidence). You've answered all of [reviewer A]'s review comments.
+3. #15671, for your judgment: upstream #16208 (merged Nov 3) added `examples/backends/vllm/launch/agg_transcription.sh`, a Whisper speech-to-text launcher with no docs. That's a third speech-recognition launcher next to your `agg_asr*.sh`. Decide whether your docs should mention it or the names should match. It doesn't conflict with your PR.
+
+**#17372** https://github.com/ai-dynamo/dynamo/pull/17372
+- **Status:** mergeable, review required, open 9 days. 16 commits behind main.
+- **CI:** `sglang-runtime / Build multi-arch cuda13.0` was cancelled at 61 minutes, so `backend-status-check` failed.
+  - **Cause:** CI infrastructure, high confidence. The image build itself passed in 46.7 minutes. The compliance step after it ran past the job's 60-minute limit.
+  - **Evidence:** the same 60-minute cancellation hit 12 or more unrelated PRs in the same window, plus main's post-merge runs.
+  - **Fix on main:** none.
+- **Reviews:** all 14 CodeRabbit threads are resolved. There are no human reviews.
+- **Ping:** skipped, because your codeowner ping went out today at 21:43 UTC.
+- **Would do:** re-run the failed jobs. You don't have permission, so I'd only report it.
+
+**#15671** https://github.com/ai-dynamo/dynamo/pull/15671
+- **Status:** mergeable, review required, open 30 days, approved by [reviewer B]. 312 commits behind main.
+- **CI:** the `vllm-runtime` and `vllm-runtime-efa` builds failed.
+  - **Cause:** CI infrastructure, high confidence. NVIDIA's CUDA package mirror was mid-sync (`Mirror sync in progress?`).
+  - **Evidence:** the same error appeared between 20:24 and 20:35 UTC on #18121 and on a main post-merge run. vLLM builds have been passing again since.
+  - **Previous commit:** 17dc930 passed CI.
+- **Reviews:** all threads are resolved and every human comment has a reply. Minor: your Oct 26 scipy reply tagged [reviewer C] instead of [reviewer B].
+- **Ping:** not eligible, because [reviewer A] reviewed today.
+- **Would do:** re-run the failed jobs. Same permission limit, so report only.
+
+There are 21 old `backup/*` branches on your fork, none from this run.
+
+
+
+I'll re-check both PRs for changes since the analysis, then mark the task complete.
+
+#15671 has activity at 01:18 UTC, after my triage. I'll check what it was.
+
+Nothing new needs action. The 01:18 UTC update on #15671 was the CI-report bot posting the same failed run, and #17372 is back to BLOCKED/MERGEABLE.
+
+
+===== END REPORT =====
+

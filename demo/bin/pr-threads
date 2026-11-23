@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# pr-threads <pr>: the sandbox PR's review threads: where, resolved or not, and who said what.
+gh api graphql -F n="$1" -f query='query($n: Int!) { repository(owner: "Jont828", name: "dynamo") { pullRequest(number: $n) {
+  reviewThreads(first: 20) { nodes { isResolved resolvedBy { login } path line comments(first: 10) { nodes { author { login } createdAt body } } } } } } }' \
+  --jq '.data.repository.pullRequest.reviewThreads.nodes[] |
+    "\(.path):\(.line // "-")  \(if .isResolved then "RESOLVED by \(.resolvedBy.login)" else "open" end)",
+    (.comments.nodes[] | "  \(.createdAt[11:16])Z \(.author.login): \(.body | gsub("(?s)<details>.*?</details>"; "") | gsub("<[^>]+>"; "") | gsub("\\*\\*(?<x>[^*\\s](?:[^*]*[^*\\s])?)\\*\\*"; "\(.x)") | split("\n") | map(select(test("\\S"))) | .[0:2] | join(" ") | .[0:150])")' \
+  | fold -s -w 99

@@ -1,0 +1,918 @@
+apiVersion: core.orka.ai/v1alpha1
+kind: Task
+metadata:
+  name: dynamo-pr-shepherd-dryrun
+  namespace: orka-system
+  labels:
+    app.kubernetes.io/name: pr-shepherd
+    pr-shepherd/mode: dry-run
+spec:
+  type: container
+  image: docker.io/library/node:22-bookworm@sha256:18a6d90fd60542269850c80ca03b29b1d9b14d6b221ac7ee8e35b0d33ef904bd
+  command:
+  - bash
+  - -c
+  args:
+  - |
+    #!/usr/bin/env bash
+    # Runs inside the Orka container Task. Installs pinned tools into /tmp (the only
+    # writable path), prepares a signed-commit clone of Jont828/dynamo, then runs
+    # Copilot CLI headless with $SHEPHERD_PROMPT. Only the agent's reply is streamed
+    # to stdout, which Orka stores as the Task result.
+    set -euo pipefail
+
+    export HOME=/tmp/home TZ="${TZ:-America/New_York}"
+    export UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python
+    export npm_config_prefix=/tmp/npm npm_config_cache=/tmp/npm-cache
+    export PRE_COMMIT_HOME=/tmp/pre-commit-cache XDG_CACHE_HOME=/tmp/cache XDG_CONFIG_HOME=/tmp/home/.config
+    export PATH=/tmp/py/bin:/tmp/tools/bin:/tmp/npm/bin:$PATH
+    export GH_PROMPT_DISABLED=1 GIT_TERMINAL_PROMPT=0
+    mkdir -p "$HOME/.ssh" /tmp/tools/bin /tmp/work
+
+    GH_VERSION=2.103.3
+    GH_SHA256=4c806978ffce1cec70853302a56d70ac6da4f19bae7adca4e1a8ab00633dd91d
+    UV_VERSION=0.13.7
+    UV_SHA256=c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83
+    COPILOT_VERSION=1.0.105
+
+    LOG=/tmp/bootstrap.log
+    step() { printf '[bootstrap %s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
+    fail() {
+      step "FAILED: $*"
+      tail -n 40 "$LOG" >&2 || true
+      exit 1
+    }
+
+    : "${GH_TOKEN:?GH_TOKEN is not set}"
+    : "${SSH_SIGNING_KEY:?SSH_SIGNING_KEY is not set}"
+    : "${SHEPHERD_PROMPT:?SHEPHERD_PROMPT is not set}"
+    : "${SHEPHERD_WATCH_JS:?SHEPHERD_WATCH_JS is not set}"
+
+    # PR watch gate (watch.mjs): pick a regular run, a run scoped to new merge conflicts and
+    # CI failures, or nothing. It needs only Node, so a slot with nothing new ends here in
+    # seconds, before any tool install or clone.
+    mkdir -p /tmp/watch
+    printf '%s\n' "$SHEPHERD_WATCH_JS" > /tmp/watch/watch.mjs
+    unset SHEPHERD_WATCH_JS
+    SHEPHERD_OUT_DIR=/tmp/watch node /tmp/watch/watch.mjs || fail "PR watch gate"
+    case "$(cat /tmp/watch/mode)" in
+      none) exit 0 ;;
+      full) ;;
+      watch) SHEPHERD_PROMPT="$(cat /tmp/watch/trigger.md)"$'\n\n'"$SHEPHERD_PROMPT" ;;
+      *) fail "PR watch gate wrote an unknown mode" ;;
+    esac
+    export COPILOT_GITHUB_TOKEN="$GH_TOKEN"
+
+    umask 077
+    printf '%s\n' "$SSH_SIGNING_KEY" > "$HOME/.ssh/signing_key"
+    unset SSH_SIGNING_KEY
+    ssh-keygen -y -f "$HOME/.ssh/signing_key" > "$HOME/.ssh/signing_key.pub" 2>>"$LOG" || fail "invalid SSH signing key"
+    umask 022
+
+    step "installing gh $GH_VERSION, uv $UV_VERSION, copilot $COPILOT_VERSION"
+    {
+      curl -fsSL -o /tmp/gh.tgz "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz"
+      echo "$GH_SHA256  /tmp/gh.tgz" | sha256sum -c -
+      tar -xzf /tmp/gh.tgz -C /tmp/tools --strip-components=1
+      curl -fsSL -o /tmp/uv.tgz "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz"
+      echo "$UV_SHA256  /tmp/uv.tgz" | sha256sum -c -
+      tar -xzf /tmp/uv.tgz -C /tmp/tools/bin --strip-components=1
+      rm -f /tmp/gh.tgz /tmp/uv.tgz
+      uv venv --seed --python 3.12 /tmp/py
+      uv pip install --python /tmp/py/bin/python pre-commit pytest pyyaml
+      npm install -g --no-fund --no-audit --loglevel=error "@github/copilot@${COPILOT_VERSION}"
+    } >>"$LOG" 2>&1 || fail "tool installation"
+
+    login="$(gh api user --jq .login 2>>"$LOG")" || fail "GitHub token rejected"
+    [ "$login" = "Jont828" ] || fail "token belongs to '$login', expected Jont828"
+
+    step "configuring git and cloning Jont828/dynamo"
+    {
+      git config --global user.name "Jonathan Tong"
+      git config --global user.email "jt572@cornell.edu"
+      git config --global gpg.format ssh
+      git config --global user.signingkey "$HOME/.ssh/signing_key"
+      git config --global commit.gpgsign true
+      printf 'jt572@cornell.edu %s\n' "$(cat "$HOME/.ssh/signing_key.pub")" > "$HOME/.ssh/allowed_signers"
+      git config --global gpg.ssh.allowedSignersFile "$HOME/.ssh/allowed_signers"
+      git config --global init.defaultBranch main
+      git config --global fetch.prune true
+      gh auth setup-git --hostname github.com
+      git clone --filter=blob:none --no-tags https://github.com/Jont828/dynamo.git /tmp/work/dynamo
+      cd /tmp/work/dynamo
+      git remote add upstream https://github.com/ai-dynamo/dynamo.git
+      git config remote.upstream.promisor true
+      git config remote.upstream.partialclonefilter blob:none
+      git config remote.upstream.tagOpt --no-tags
+      git fetch upstream main
+    } >>"$LOG" 2>&1 || fail "git setup"
+
+    cd /tmp/work/dynamo
+    step "running Copilot CLI (${SHEPHERD_MODEL:-default model}, effort ${SHEPHERD_EFFORT:-default}); report follows"
+    printf '\n===== PR SHEPHERD REPORT =====\n'
+    set +e
+    copilot -p "$SHEPHERD_PROMPT" \
+      ${SHEPHERD_MODEL:+--model "$SHEPHERD_MODEL"} \
+      ${SHEPHERD_EFFORT:+--reasoning-effort "$SHEPHERD_EFFORT"} \
+      --allow-all --no-ask-user --no-color -s 2>/tmp/copilot.err
+    rc=$?
+    set -e
+    printf '\n===== END REPORT =====\n'
+    if [ "$rc" -ne 0 ]; then
+      step "copilot exited with $rc"
+      tail -n 40 /tmp/copilot.err >&2 || true
+    fi
+    exit "$rc"
+  env:
+  - name: TZ
+    value: America/New_York
+  - name: SHEPHERD_MODEL
+    value: claude-opus-5.5
+  - name: SHEPHERD_EFFORT
+    value: xhigh
+  - name: GH_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: pr-shepherd-github
+        key: token
+  - name: SSH_SIGNING_KEY
+    valueFrom:
+      secretKeyRef:
+        name: pr-shepherd-signing
+        key: signing_key
+  - name: SHEPHERD_PROMPT
+    value: "## DRY RUN \u2014 this section overrides every other section of this prompt, above or below it\nThis is a setup-verification run. Do NOT write to GitHub in any way. That means no pushes (including backup branches), PR or issue comments, thread replies or resolutions, workflow re-runs, or pings. Local-only git operations are fine.\n1. Verify the environment and report OK/FAIL for each check:\n   - `gh api user --jq .login` prints Jont828.\n   - `git fetch upstream main` and `git fetch origin` succeed.\n   - On a detached HEAD, `git commit --allow-empty -s -m \"chore: signing test\"` succeeds and `git verify-commit HEAD` reports a good signature. Discard the commit afterwards.\n   - `pre-commit --version` works.\n2. Run the triage and the per-PR analysis from the procedure below. Stop before any GitHub write or push, and for each PR list the actions you WOULD take.\nStart the report with \"DRY RUN\".\n\n## Environment (Orka on AKS) \u2014 read first\n- You run headless in a scheduled\
+      \ Orka container Task on Jonathan's AKS cluster, not on his laptop. Nobody can answer questions during the run, so never wait for input. Your final message is stored as the Orka Task result, and he reads it later.\n- Your working directory, /tmp/work/dynamo, is this run's checkout: a fresh blob-less partial clone of Jont828/dynamo. Remotes are `origin` = Jont828/dynamo and `upstream` = ai-dynamo/dynamo, both over HTTPS. Missing objects are fetched on demand.\n- `gh` is authenticated as Jont828 and is git's credential helper. Commit signing is preconfigured: an SSH key at ~/.ssh/signing_key, commit.gpgsign=true, identity \"Jonathan Tong <jt572@cornell.edu>\". Do not change git identity, signing, remotes, or credentials.\n- Available tools: git, gh, curl, node/npm, and python3/python from a venv with pre-commit, pytest and pyyaml. You may `pip install` more into that venv when a pre-commit hook or test needs it. There is no Docker, GPU, or Rust/Go/C++ toolchain. Skip builds or tests\
+      \ that need them and say so in the report.\n- Only /tmp is writable. Local time is America/New_York, so use `date` for backup branch timestamps.\n- Review mode: `shadow`, which overrides the skill's default. The skill's Review mode section says what it means for steps C, R and S.\n\n# PR shepherd (ai-dynamo/dynamo)\n\nGoal: move my open pull requests toward merge with as little maintainer attention as possible. Fix what you can verify and safely fix, leave maintainers only the decisions that need them, and tell me what needs my attention. You act as me (GitHub user Jont828) through the local `gh` CLI and git.\n\nDefaults (the caller may override): repo `ai-dynamo/dynamo`, author `Jont828`, review mode `shadow`.\n\n## Scope\n- PRs: open PRs authored by Jont828 in ai-dynamo/dynamo (`gh pr list -R ai-dynamo/dynamo --author Jont828 --state open`). Ignore other repos.\n- Git: the worktree is a checkout of my clone. Remotes: `origin` = my fork Jont828/dynamo (PR head branches live here),\
+      \ `upstream` = ai-dynamo/dynamo. Start with `git fetch upstream main` and `git fetch origin`.\n- Only push to `origin`, and only to (a) the PR's head branch or (b) new `backup/*` branches. Never push to `upstream`.\n- Never merge, close, approve, re-label, or change reviewers on PRs. Never edit or delete others' comments, or edit PR titles or descriptions. Never post `/ok to test`.\n\n## Review mode\n- `live`: steps C, R and S act on GitHub as written below.\n- `shadow`: do steps R and S fully, but don't push fixes from step R and don't post or edit the review brief. Keep step R's fixes out of the review-fix commit, which then holds only step C's fixes. Put the brief and step R's diff in the report: all of it when it's under about 200 lines, otherwise its stat and key hunks. Files you save during the run are lost when it ends. In step C, leave declined threads unresolved.\n- `off`: skip steps R and S. In step C, leave declined threads unresolved.\n\n## Preflight\n- If `git fetch` or\
+      \ `gh` is denied by a permission prompt, stop. Report that the session lacks non-interactive tool approval (the automation needs allow-all permissions). Don't try to work around it.\n- Jont828 has no write or triage access to ai-dynamo/dynamo. Don't attempt `gh run rerun`, because it returns 403. Report flakes as \"needs a maintainer rerun\" instead.\n\n## Procedure\nTriage every PR first: mergeStateStatus, mergeable, reviewDecision, statusCheckRollup, isDraft, createdAt, last commit date, reviews, review threads (GraphQL `reviewThreads` including isResolved), and comments. If mergeStateStatus is UNKNOWN, re-query after a short wait.\n\nThen handle PRs one at a time. You may delegate each PR to a subagent for context isolation, but never work on two PRs concurrently in this worktree. A regular run does steps A\u2192G for each PR. A review (the PR watch asks for one, or I ask you to review a PR) does steps C, R and S. Re-read PR state after any push.\n\n### A. Rebase (only when needed)\n\
+      - Rebase when mergeStateStatus is DIRTY or BEHIND, or when a CI failure is likely fixed on the latest upstream/main (see B). Don't rebase just because main moved. If the PR is already approved, rebase only when required to merge (a failing required check counts).\n- Work detached: `git checkout --detach origin/<head>`, and record OLD_SHA.\n- Back up first: `git push origin <OLD_SHA>:refs/heads/backup/<head>-<YYYYMMDD-HHMM>` (local time), then verify that it exists on origin. Never proceed without a verified backup.\n- Record OLD_BASE=`git merge-base <OLD_SHA> upstream/main`, then run `git rebase upstream/main`. Resolve mechanical conflicts. If a conflict needs a design or product judgment, run `git rebase --abort` and report it.\n- Semantic check (merge conflicts won't catch this): from the PR title, description, and diff, identify any rule the PR applies across a group of files (for example, \"migrate all vLLM templates to a new folder or style\"). Inspect `git diff --name-status\
+      \ <OLD_BASE> upstream/main` for files in that group:\n  - If upstream added members in the old style, apply the PR's transformation to them.\n  - If upstream deleted or renamed a source that the PR depends on, remove or rename the PR's derived page and any dependent PR additions (indexes, links, nav, catalogs).\n  - If upstream modified a source that the PR migrated, port that content change into the migrated copy.\n  Put these adjustments in a separate commit whose message explains each one.\n- Validate: run `pre-commit run --from-ref upstream/main --to-ref HEAD`, plus relevant tests or builds for changed files when they're reasonably fast (under about 10 minutes). If validation fails and you can't fix it confidently, don't push. Report it instead.\n- Push: `git push --force-with-lease=<head>:<OLD_SHA> origin HEAD:refs/heads/<head>`.\n\n### B. CI\n- If checks fail, read the failing job logs (`gh pr checks`, `gh run view <id> --log-failed`). If log download returns a transient 403,\
+      \ fetch job logs through the API (`gh api repos/ai-dynamo/dynamo/actions/jobs/<job_id>/logs`) and read the tail.\n- Classify the root cause:\n  1. This PR's code.\n  2. upstream/main or a stale base.\n  3. Infrastructure or flake (runner, network, timeout, OOM, registry, quota, external mirrors).\n- Compare with the same job on recent upstream main runs and on other open ai-dynamo/dynamo PRs from the last ~48h. Matching failures on unrelated PRs or main point to flake or infra. Also check whether the job passed on the PR's previous commit and whether the PR touches any build inputs. State a confidence (High, Medium, or Low) with the evidence.\n- Known recurring flakes (still verify each time): NVIDIA CUDA apt mirror size mismatch (\"Mirror sync in progress?\") in vllm image builds, and sglang-runtime builds cancelled at the ~60-minute job limit during \"Compliance extract\" after a slow BuildKit build. Both fail the required `backend-status-check`.\n- For causes 2 and 3, check whether\
+      \ a fix has already landed on upstream/main since the PR's merge base:\n  - Scan `git log <merge-base>..upstream/main` for commits that touch the failing job's workflow or CI scripts, dependency pins, container or build files, test config, or the failing tests.\n  - Look for commits, or linked PRs, whose messages mention the error, test, or job.\n  - Check whether that job failed on main runs before a given commit and passed after it.\n  Record any likely fixing commit with a confidence.\n- Cause 1 with a clear fix: fix it, validate as in A, commit, and push. Make at most one CI-fix commit per PR per run. If the same failure persists after an earlier automated fix (a commit with the `Automated-by: pr-shepherd` trailer), don't retry. Escalate instead.\n- Cause 2 or 3 with a likely fix on main (Medium confidence or higher): rebase per A to pick it up, and cite the fixing commit in the report. Don't also rerun the old CI run.\n- Cause 3 with no fix on main and High confidence of a flake:\
+      \ report it as needing a maintainer rerun (see Preflight).\n- Anything else: report it as needing my attention, with the diagnosis.\n- If CI hasn't started because the new SHA is waiting for a maintainer's `/ok to test`, report it.\n\n### C. CodeRabbit\nCheck unresolved threads, and also CodeRabbit review bodies for \"nitpick\" and \"outside diff range\" items that never became threads. Skip walkthrough and summary comments. For each item from `coderabbitai[bot]` with no reply yet from Jont828:\n- Re-check it against the current head. If a later commit already fixed it or removed the code, reply with that commit and resolve the thread.\n- Otherwise judge it on evidence, not plausibility. Read the surrounding code and any guideline it cites (`.ai/*.md`, the nearest `AGENTS.md`, `.github/review-prompts/`). For a claimed bug, find the code path, or run a command or test that shows it.\n- Valid and within this PR's scope: fix it, and every other instance of the same pattern in the PR.\
+      \ The fix goes in the review-fix commit (see Commits). After pushing, reply in the thread with what changed and the commit SHA, and resolve the thread.\n- Not valid, not worth it, or out of scope (pre-existing code, or work for a follow-up): reply with a short, specific reason that cites the code or guideline. Post these replies before you push the review-fix commit.\n- Needs a decision from me or a maintainer (design, product, API contract, scope), or you can't establish whether it's valid: don't reply. Leave it unresolved and list it under Needs your attention, with your analysis and a recommended answer.\n\nCodeRabbit answers replies automatically, usually within a few minutes. Before you push, wait up to about five minutes for its answers to your declining replies. Then, and in every later run, check each unresolved thread whose last comment is your declining reply or CodeRabbit's answer to it:\n- It accepts or only acknowledges: resolve the thread in live review mode, because\
+      \ ai-dynamo/dynamo requires every thread resolved before merge. In the other modes, leave it unresolved.\n- It hasn't answered: leave the thread unresolved for a later run. Once your reply is a day old with no answer, treat that as acceptance.\n- It disputes with a new argument: re-check once. If it's right, fix it (in the review-fix commit, when you haven't pushed it yet). Otherwise leave the thread unresolved and list the disagreement under Needs your attention, every run until I settle it.\n- Don't reply to it again, except to report a fix.\n\nIn a regular run, finish with the review-fix commit (see Commits) if you made any fixes. In a review, step R finishes it.\n\n### R. Self-review (reviews only)\nReview the PR the way a Dynamo codeowner would, fix the verified low-risk findings, and keep everything else for me or the maintainers. Aim for fewer review rounds, not more comments: report only what a reviewer would act on.\n1. Scope. The PR watch says what to review. Without it,\
+      \ the last reviewed head is the one in the brief's marker, if there's a brief.\n   - A full review, when there's no earlier review.\n   - A follow-up of the changes since the last reviewed head. Confirm it with `git merge-base --is-ancestor <last> HEAD`, review `<last>..HEAD`, and re-check the open items in the current brief.\n   - A rewritten history since the last reviewed head. Use `git range-diff` against it to find what actually changed. If nothing changed except the base, say so and skip to step S.\n2. Rubric. Use Dynamo's own review guidance as it is on upstream/main (for example `git show upstream/main:.agents/skills/pr-checklist/SKILL.md`), not the PR's copy, which the PR may change: `.agents/skills/pr-checklist/SKILL.md`, and what it points to (the area prompts in `.github/review-prompts/`, `.ai/*.md`, the `graham-code-review` skill for Rust, the `dynamo-docs` skill for docs, and the nearest `AGENTS.md`). Read the PR title and description, and check that the change does what\
+      \ they say.\n3. Findings. Record for each one: a priority (P0 breaks something or blocks merge; P1 is a real bug or regression to fix before merge; P2 should be fixed; P3 is a nit), a confidence, the file and line, the evidence, and whether this PR introduced it or it's pre-existing. Report a repeated defect once and list every instance. Drop style that pre-commit doesn't enforce, speculation without a concrete code path, remarks that only ask for more tests, and anything CodeRabbit or a human has already raised. Keep at most three P3s.\n4. Verify. Give each P0\u2013P2 finding to a fresh subagent that hasn't seen your reasoning, with the code and the claim, and ask it to refute the finding. Keep only findings it can't refute. Where practical, reproduce a finding with a failing test or a command. Spend at most about 10 minutes on each finding; one you can't settle in that time is \"unsure\".\n5. Decide:\n   - Fix it: it's confirmed and introduced by this PR, the fix is local and unambiguous,\
+      \ and you can validate it here (see Commits). It must not change the design, the scope, or a user-facing contract (request fields, CLI flags, environment variables, metrics, CRD fields). Fix a P3 only when the fix is trivial and in lines the PR already changes.\n   - Ask me: confirmed issues whose fix needs judgment or is large, and unsure findings. Give the evidence and a suggested fix.\n   - Ask the maintainers, in the brief: only questions that need a maintainer's call, such as design fit, a contract or compatibility change, or a risk trade-off.\n   - Pre-existing issues: list them in the report only. Don't fix them in this PR.\n   - Don't raise again anything the current brief or a thread has already settled.\n6. Apply. Add the fixes to the review-fix commit (see Commits), together with step C's, and finish it.\n\n### S. Review brief\nAfter step R, keep one short comment on the PR for the maintainers, so they can judge the PR's shape and either merge it or say what they need. It\
+      \ describes the head after your pushes.\n\n```markdown\n<!-- pr-shepherd:review-brief head=<full head SHA> -->\n**Review brief** for <short head SHA>, written by the author's automated PR assistant.\n\n**What it does:** one or two sentences.\n**Risk:** Low, Medium or High, and why. Judge it by what changed (the core components in pr-checklist, user-facing contracts, CI, build or deploy files, security), not by size alone.\n**Where to look:** up to three places that most need a human, each a file link and one line.\n**Decisions for reviewers:** numbered questions, or \"None\".\n**Checked:** CI at this head; tests or commands run; self-review fixes and their commit; CodeRabbit items fixed and declined.\n**Still open:** what's waiting on the author, or \"Nothing\".\n\n<details><summary>Declined CodeRabbit suggestions (N)</summary>\n\nOne line each: the suggestion, why it was declined, and a link to the thread.\n</details>\n```\n\n- Keep it under about 250 words, not counting the declined\
+      \ list. Write \"None\" or \"Nothing\" instead of padding.\n- Live review mode: find my comment with the `pr-shepherd:review-brief` marker and edit it (`gh api -X PATCH repos/ai-dynamo/dynamo/issues/comments/<id> -f body=...`). Post a new comment only when there's none. Don't post on a draft PR.\n- In a regular run, if a PR has a brief whose Checked or Still open lines are out of date (CI finished, or you pushed), update those lines only. Don't review again.\n\n### D. Human reviews and comments (notify only)\nList reviews, threads, and comments from humans (not bots, not Jont828) that have no later reply from Jont828 and no later commit addressing them. Mark items from the last 24h as NEW, and note whether the author is a codeowner. Don't reply to humans.\n\n### E. Approved, needs manual merge\nIf reviewDecision is APPROVED and the PR isn't merged or auto-merging, flag it as \"ready for you to merge\" with any remaining blockers.\n\n### F. Codeowner pings\nPing only when all of these\
+      \ are true: the PR isn't a draft, reviewDecision is REVIEW_REQUIRED, CI is green (or failing only on High-confidence flakes), and there has been no human review activity for 2+ business days.\n- Find which codeowner teams or users still need to approve, using requested reviewers and CODEOWNERS. `.github/codeowners/who_owns.py` may help. `gh pr view` caps the file list at 100, so use `gh api --paginate repos/ai-dynamo/dynamo/pulls/<n>/files` for large PRs. Team membership may not be visible to this token. If so, mention teams.\n- First check for a comment by Jont828 containing `<!-- pr-shepherd:codeowner-ping -->` in the last 3 business days. If one exists, don't ping. Otherwise post one short, friendly comment that @mentions only the pending owners and ends with that hidden marker.\n\n### G. Age\nFlag PRs open for 7+ days, and any PR with no activity (commits or comments by anyone) in 3+ days.\n\n## Commits\n- Every commit must be signed (the repo has `commit.gpgsign=true` through\
+      \ SSH) and DCO signed-off (`git commit -s`). Add the trailer `Automated-by: pr-shepherd` to every commit you create. Use the repo's conventional-commit style. If signing fails, don't push. Report it instead.\n- The review-fix commit holds the fixes from steps C and R together, so that CI runs once for them. Its message lists each fix and what prompted it (a CodeRabbit thread or a self-review finding).\n  - Include only fixes you can validate here: pre-commit passes, and every changed file that has a build or tests gets them run. Where the environment can't build or test a change (for example Rust, Go or C++ code, or anything that needs a GPU or Docker), give me the patch instead of pushing it.\n  - To finish it: validate as in step A, have a fresh subagent confirm that the diff fixes exactly the listed items and nothing else, check again that the PR has no approval (see Limits), then commit and push.\n  - If validation fails and you can't fix it confidently, don't push. Report it,\
+      \ and leave the affected threads unanswered.\n\n## Limits and failures\n- Per PR per run: at most one rebase, one CI-fix commit, and one review-fix commit.\n- Don't push a review-fix commit to a PR that has any current approval, even when reviewDecision isn't APPROVED yet (check `latestOpinionatedReviews`). List the fixes instead. In ai-dynamo/dynamo an approval survives new pushes, so it would cover code the approver never saw.\n- Never use plain `--force`. If a push fails, inspect the remote state before any retry. Don't change remotes or credentials.\n- If any step fails, stop work on that PR, leave origin as-is, and report what happened.\n- A review has about 45 minutes per PR. When time runs short, stop fixing, mark what's left unsure, and still write the brief.\n- Clean up temp files (for example `/tmp/prs`) before finishing. Leave the worktree clean.\n\n## Report (final message)\nStart with **Needs your attention** (or \"Nothing needs you\"). Then, for each PR, include:\n- Link\
+      \ and a one-line status.\n- Actions taken: pushes with SHAs, backup branch names, replies and resolutions, and pings.\n- CI diagnosis: cause, confidence, evidence, and any fixing commit on main.\n- Review, when there was one: how many findings were fixed, asked about, declined, refuted, or pre-existing; each fix with its commit; and the brief. In shadow mode, include the brief and the fixes you would have pushed.\n- Items waiting on me.\n\nKeep it short and scannable.\n"
+  - name: SHEPHERD_REVIEW
+    value: shadow
+  - name: SHEPHERD_SIGNING_FINGERPRINT
+    value: SBKQSTrb8yvIuForFP77qqQ01yqZgtaUYzyMKCyNTgU
+  - name: SHEPHERD_MODE
+    value: full
+  - name: SHEPHERD_READ_ONLY
+    value: '1'
+  - name: SHEPHERD_WATCH_JS
+    value: |
+      // PR watch gate for the dynamo PR shepherd.
+      //
+      // Runs first in every slot of the scheduled Orka Task (every 15 minutes), before any tool
+      // install, using only Node built-ins. It picks what this slot does:
+      //   full   a regular run is due (by default every 2 hours on the even hour, every day)
+      //   watch  an open PR has a merge conflict at a head the shepherd hasn't been given, or
+      //          failed checks it hasn't been given, once that head's CI has finished, or (with
+      //          SHEPHERD_REVIEW on) a head that needs a review: one with commits the shepherd
+      //          didn't sign since the last review, untouched for a quiet period
+      //   none   nothing new, so the slot ends in seconds
+      // What the shepherd has already been given is kept in an Actions variable on the fork, so
+      // one problem starts one run, not one run per slot.
+      // Whatever the slot does, it also keeps a link to each PR's newest Fern docs preview at the
+      // top of the PR's description (see syncFernPreviews).
+      //
+      // Writes $SHEPHERD_OUT_DIR/mode (none|full|watch) and, for watch, trigger.md (the prompt
+      // section that scopes the run). The summary on stdout starts the Task result.
+
+      import {mkdirSync, writeFileSync} from 'node:fs';
+      import {hostname} from 'node:os';
+      import {join} from 'node:path';
+
+      const env = process.env;
+      const list = (s) => s.split(',').map((x) => Number(x.trim())).filter((x) => Number.isInteger(x));
+      const num = (s, dflt) => (s && Number.isFinite(Number(s)) ? Number(s) : dflt);
+      // "18569, #18570" -> [18569, 18570]. Anything else is an error, so a typo can't widen a review.
+      function prNumbers(s) {
+        const parts = String(s ?? '').split(/[\s,]+/).filter(Boolean);
+        const out = parts.map((p) => Number(p.replace(/^#/, '')));
+        if (out.some((n) => !Number.isInteger(n) || n <= 0)) throw new Error(`SHEPHERD_REVIEW_PRS must list PR numbers, not "${s}"`);
+        return out;
+      }
+
+      const cfg = {
+        token: env.GH_TOKEN,
+        mode: (env.SHEPHERD_MODE || 'auto').toLowerCase(), // auto | full | review | check
+        readOnly: env.SHEPHERD_READ_ONLY === '1',
+        repo: env.SHEPHERD_REPO || 'ai-dynamo/dynamo',
+        author: env.SHEPHERD_AUTHOR || 'Jont828',
+        stateRepo: env.SHEPHERD_STATE_REPO || 'Jont828/dynamo',
+        stateVar: env.SHEPHERD_STATE_VAR || 'ORKA_PR_SHEPHERD_STATE',
+        tz: env.TZ || 'America/New_York',
+        // Regular runs start at :00 of these local hours on these ISO weekdays (Monday = 1).
+        fullDays: list(env.SHEPHERD_FULL_DAYS || '1,2,3,4,5,6,7'),
+        fullHours: list(env.SHEPHERD_FULL_HOURS || '0,2,4,6,8,10,12,14,16,18,20,22'),
+        // A regular run that Forbid skipped (another run was still going) is made up by a
+        // later slot within this many minutes.
+        fullMakeupMinutes: num(env.SHEPHERD_FULL_MAKEUP_MINUTES, 90),
+        // Failed checks wait for the head's CI to finish, unless they are at least this old.
+        ciStaleMinutes: num(env.SHEPHERD_CI_STALE_MINUTES, 60),
+        // Review runs (steps C, R and S of the skill): off | shadow | live. The gate only needs to
+        // know whether they're on; the rendered prompt tells the agent which mode it's in.
+        review: (env.SHEPHERD_REVIEW || 'off').toLowerCase(),
+        // A head is reviewed once its newest commit is at least this old, so work in progress
+        // that is still being pushed isn't reviewed.
+        reviewQuietMinutes: num(env.SHEPHERD_REVIEW_QUIET_MINUTES, 60),
+        // At most this many PRs are reviewed in one run, so a run stays well inside its time
+        // limit. The others wait for a later slot.
+        reviewMaxPerRun: Math.max(1, num(env.SHEPHERD_REVIEW_MAX_PER_RUN, 1)),
+        // With SHEPHERD_MODE=review, review only these PR numbers (default: every eligible PR).
+        reviewPRs: prNumbers(env.SHEPHERD_REVIEW_PRS),
+        // The SSH key fingerprint (SHA256, base64) of the shepherd's signing key, which only the
+        // cluster has. See isShepherdFix.
+        signingFingerprint: (env.SHEPHERD_SIGNING_FINGERPRINT || 'SBKQSTrb8yvIuForFP77qqQ01yqZgtaUYzyMKCyNTgU').replace(/^SHA256:/, ''),
+        // Keep the newest Fern docs preview link at the top of each PR's description: on | off.
+        fernPreview: (env.SHEPHERD_FERN_PREVIEW || 'on').toLowerCase(),
+        outDir: env.SHEPHERD_OUT_DIR || '/tmp/watch',
+      };
+      const AUTOMATED_TRAILER = /^Automated-by: pr-shepherd\s*$/m;
+
+      const SLOT_MS = 15 * 60_000;
+      const FAILED_CONCLUSIONS = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'STARTUP_FAILURE']);
+      const FAILED_STATES = new Set(['FAILURE', 'ERROR']);
+      const WEEKDAYS = {Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7};
+
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const log = (msg) => process.stderr.write(`[watch] ${msg}\n`);
+      const short = (sha) => (sha || '').slice(0, 7);
+      const clean = (s) => String(s ?? '').replace(/[\r\n`]+/g, ' ').trim();
+
+      // ---------- GitHub ----------
+
+      async function gh(path, {method = 'GET', body, allow404 = false} = {}) {
+        for (let attempt = 1; ; attempt++) {
+          let res;
+          try {
+            res = await fetch(`https://api.github.com${path}`, {
+              method,
+              headers: {
+                Authorization: `Bearer ${cfg.token}`,
+                Accept: 'application/vnd.github+json',
+                'X-GitHub-Api-Version': '2022-11-28',
+                'User-Agent': 'orka-pr-shepherd-watch',
+                ...(body ? {'Content-Type': 'application/json'} : {}),
+              },
+              body: body ? JSON.stringify(body) : undefined,
+              signal: AbortSignal.timeout(30_000),
+            });
+          } catch (err) {
+            if (attempt < 3) {
+              await sleep(2000 * attempt);
+              continue;
+            }
+            throw new Error(`${method} ${path}: ${err.message}`);
+          }
+          if (res.status === 404 && allow404) return null;
+          if ((res.status >= 500 || res.status === 429) && attempt < 3) {
+            await sleep(2000 * attempt);
+            continue;
+          }
+          const text = await res.text();
+          if (!res.ok) throw new Error(`${method} ${path}: HTTP ${res.status} ${text.slice(0, 300)}`);
+          return text ? JSON.parse(text) : {};
+        }
+      }
+
+      async function graphql(query, variables) {
+        const res = await gh('/graphql', {method: 'POST', body: {query, variables}});
+        if (res.errors?.length) throw new Error(`GraphQL: ${res.errors.map((e) => e.message).join('; ')}`);
+        return res.data;
+      }
+
+      const CONTEXTS = `
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          __typename
+          ... on CheckRun {
+            databaseId name status conclusion completedAt detailsUrl
+            checkSuite { app { slug } workflowRun { workflow { name } } }
+          }
+          ... on StatusContext { context state createdAt targetUrl }
+        }`;
+
+      // What tells the shepherd's own commits and rebased copies apart (see isShepherdFix).
+      const COMMIT_ID = 'oid authoredDate message additions deletions signature { ... on SshSignature { keyFingerprint } }';
+
+      // The shepherd's own work: a commit signed with its key that carries its trailer. When the
+      // shepherd rebases, it re-signs the author's commits too, but those copies keep their own
+      // message, so they still count as the author's. A commit the author amends is re-signed
+      // with the author's key.
+      const isShepherdFix = (c) =>
+        (c.signature?.keyFingerprint ?? '').replace(/^SHA256:/, '') === cfg.signingFingerprint && AUTOMATED_TRAILER.test(c.message ?? '');
+      // A rebase keeps a commit's author date, message and (unless it resolved a conflict) line
+      // counts, so this matches a commit to its copies. An amend that changes the code usually
+      // changes the line counts too.
+      const copyKey = (c) => `${c.authoredDate}\n${c.additions}/${c.deletions}\n${c.message}`;
+
+      const PR_FIELDS = `
+        number url isDraft headRefName headRefOid mergeable reviewDecision
+        commits(last: 1) { nodes { commit { ${COMMIT_ID} committedDate statusCheckRollup { contexts(first: 100) { ${CONTEXTS} } } } } }`;
+
+      const [owner, name] = cfg.repo.split('/');
+
+      async function fetchPR(number) {
+        const data = await graphql(
+          `query($owner: String!, $name: String!, $number: Int!) {
+            repository(owner: $owner, name: $name) { pullRequest(number: $number) { ${PR_FIELDS} } } }`,
+          {owner, name, number},
+        );
+        return data.repository.pullRequest;
+      }
+
+      async function moreContexts(number, after) {
+        const data = await graphql(
+          `query($owner: String!, $name: String!, $number: Int!, $after: String!) {
+            repository(owner: $owner, name: $name) { pullRequest(number: $number) {
+              commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100, after: $after) { ${CONTEXTS} } } } } } } } }`,
+          {owner, name, number, after},
+        );
+        const commit = data.repository.pullRequest.commits.nodes[0]?.commit;
+        return {oid: commit?.oid, page: commit?.statusCheckRollup?.contexts};
+      }
+
+      // Returns {number, url, isDraft, branch, head, headCommittedAt, reviewDecision, mergeable,
+      // checks} with every check context of the head commit, or null if the head moved while it
+      // was being read.
+      async function completePR(raw) {
+        const commit = raw.commits.nodes[0]?.commit;
+        if (!commit || commit.oid !== raw.headRefOid) return null;
+        const contexts = [...(commit.statusCheckRollup?.contexts.nodes ?? [])];
+        let page = commit.statusCheckRollup?.contexts.pageInfo;
+        while (page?.hasNextPage) {
+          const next = await moreContexts(raw.number, page.endCursor);
+          if (next.oid !== raw.headRefOid) return null;
+          contexts.push(...(next.page?.nodes ?? []));
+          page = next.page?.pageInfo;
+        }
+        let mergeable = raw.mergeable;
+        // GitHub computes mergeability in the background after main moves, so ask again.
+        for (let i = 0; mergeable === 'UNKNOWN' && i < 5; i++) {
+          await sleep(5000);
+          const data = await graphql(
+            `query($owner: String!, $name: String!, $number: Int!) {
+              repository(owner: $owner, name: $name) { pullRequest(number: $number) { headRefOid mergeable } } }`,
+            {owner, name, number: raw.number},
+          );
+          if (data.repository.pullRequest.headRefOid !== raw.headRefOid) return null;
+          mergeable = data.repository.pullRequest.mergeable;
+        }
+        return {
+          number: raw.number,
+          url: raw.url,
+          isDraft: raw.isDraft,
+          branch: raw.headRefName,
+          head: raw.headRefOid,
+          headCommittedAt: commit.committedDate,
+          headIsShepherdFix: isShepherdFix(commit),
+          reviewDecision: raw.reviewDecision,
+          mergeable,
+          checks: summarizeChecks(contexts),
+        };
+      }
+
+      // The PR's commits, oldest first, and the PR's commit count (GitHub lists at most 250).
+      async function prCommits(number) {
+        const commits = [];
+        for (let after = null; ; ) {
+          const data = await graphql(
+            `query($owner: String!, $name: String!, $number: Int!, $after: String) {
+              repository(owner: $owner, name: $name) { pullRequest(number: $number) {
+                commits(first: 100, after: $after) { totalCount pageInfo { hasNextPage endCursor }
+                  nodes { commit { ${COMMIT_ID} } } } } } }`,
+            {owner, name, number, after},
+          );
+          const page = data.repository.pullRequest.commits;
+          commits.push(...page.nodes.map((n) => n.commit));
+          if (!page.pageInfo.hasNextPage) return {commits, total: page.totalCount};
+          after = page.pageInfo.endCursor;
+        }
+      }
+
+      // copyKey of each commit in a head's history, newest first, as far back as 250 commits. An
+      // empty set if GitHub no longer has the commit.
+      async function historyKeys(oid) {
+        const keys = new Set();
+        for (let after = null, pages = 0; pages < 3; pages++) {
+          const data = await graphql(
+            `query($owner: String!, $name: String!, $oid: GitObjectID!, $after: String) {
+              repository(owner: $owner, name: $name) { object(oid: $oid) { ... on Commit {
+                history(first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { authoredDate message additions deletions } } } } } }`,
+            {owner, name, oid, after},
+          );
+          const history = data.repository.object?.history;
+          if (!history) break;
+          for (const c of history.nodes) keys.add(copyKey(c));
+          if (!history.pageInfo.hasNextPage) break;
+          after = history.pageInfo.endCursor;
+        }
+        return keys;
+      }
+
+      async function listPRs() {
+        const q = `repo:${cfg.repo} is:pr is:open author:${cfg.author}`;
+        const data = await graphql(
+          `query($q: String!) { search(query: $q, type: ISSUE, first: 50) {
+            nodes { ... on PullRequest { ${PR_FIELDS} } } } }`,
+          {q},
+        );
+        const prs = [];
+        for (const raw of data.search.nodes.filter((n) => n?.number)) {
+          let pr = await completePR(raw);
+          for (let i = 0; !pr && i < 2; i++) pr = await completePR(await fetchPR(raw.number));
+          if (!pr) throw new Error(`#${raw.number}: the head kept moving while its checks were read`);
+          prs.push(pr);
+        }
+        return prs.sort((a, b) => a.number - b.number);
+      }
+
+      function summarizeChecks(contexts) {
+        // Keep only the newest run of each check, so a rerun that passed replaces its failure.
+        const latest = new Map();
+        for (const c of contexts) {
+          if (c.__typename === 'CheckRun') {
+            const id = `${c.checkSuite?.app?.slug}/${c.checkSuite?.workflowRun?.workflow?.name}/${c.name}`;
+            const prev = latest.get(id);
+            if (!prev || c.databaseId > prev.databaseId) latest.set(id, c);
+          } else if (c.__typename === 'StatusContext') {
+            latest.set(`status/${c.context}`, c);
+          }
+        }
+        const out = {total: latest.size, pending: 0, failing: []};
+        for (const c of latest.values()) {
+          if (c.__typename === 'CheckRun') {
+            if (c.status !== 'COMPLETED') out.pending++;
+            else if (FAILED_CONCLUSIONS.has(c.conclusion)) {
+              const wf = c.checkSuite?.workflowRun?.workflow?.name;
+              out.failing.push({
+                key: `run:${c.databaseId}`,
+                name: clean(wf ? `${wf} / ${c.name}` : c.name),
+                result: c.conclusion,
+                at: c.completedAt,
+                url: c.detailsUrl,
+              });
+            }
+          } else if (c.state === 'PENDING' || c.state === 'EXPECTED') out.pending++;
+          else if (FAILED_STATES.has(c.state)) {
+            out.failing.push({
+              key: `status:${c.context}@${c.createdAt}`,
+              name: clean(c.context),
+              result: c.state,
+              at: c.createdAt,
+              url: c.targetUrl,
+            });
+          }
+        }
+        out.failing.sort((a, b) => a.name.localeCompare(b.name));
+        return out;
+      }
+
+      // ---------- Fern docs preview link in the PR description ----------
+
+      // Upstream's Fern Docs workflow builds a docs preview for each head of a PR that changes the
+      // docs, once that head is approved for CI. It keeps one github-actions[bot] comment pointing
+      // at the newest build ("<herb emoji> **Fern Docs Preview:** <url>"), and every build has a new URL.
+      // Each slot copies that URL into a heading at the top of the PR's description, between these
+      // markers, and leaves the rest of the description alone. A PR with no preview comment is
+      // left alone too.
+      const FERN_BOT = 'github-actions[bot]';
+      const FERN_START = '<!-- pr-shepherd:fern-preview:start -->';
+      const FERN_END = '<!-- pr-shepherd:fern-preview:end -->';
+      const FERN_BLOCK = /<!-- pr-shepherd:fern-preview:start -->[\s\S]*?<!-- pr-shepherd:fern-preview:end -->/;
+      // Only a Fern-hosted URL is copied, and it stops at any character that could end or escape
+      // the Markdown link.
+      const FERN_URL = /https:\/\/[a-z0-9-]+\.docs\.buildwithfern\.com(?:\/[\w.~\/-]*)?/i;
+
+      // The URL in the most recently updated preview comment on a PR, or null.
+      async function fernPreviewURL(number) {
+        let newest = null;
+        for (let page = 1; page <= 30; page++) {
+          const comments = await gh(`/repos/${owner}/${name}/issues/${number}/comments?per_page=100&page=${page}`);
+          for (const c of comments) {
+            if (c.user?.login !== FERN_BOT || !/fern docs preview/i.test(c.body ?? '')) continue;
+            const url = c.body.match(FERN_URL)?.[0].replace(/\.+$/, '');
+            if (!url) continue;
+            // The workflow edits its comment in place, so the newest build is the newest edit.
+            const at = Date.parse(c.updated_at || c.created_at) || 0;
+            if (!newest || at > newest.at || (at === newest.at && c.id > newest.id)) newest = {url, at, id: c.id};
+          }
+          if (comments.length < 100) break;
+        }
+        return newest?.url ?? null;
+      }
+
+      // \u{1F33F} is the herb emoji the preview comment starts with. Escaped, so this file stays ASCII
+      // and render.py keeps it a readable YAML block.
+      const fernBlock = (url) => `${FERN_START}\n## \u{1F33F} [Fern docs preview](${url})\n${FERN_END}`;
+
+      // The description with the block for url in place of its earlier block, or at the top.
+      function withFernBlock(body, url) {
+        const text = body ?? '';
+        const nl = text.includes('\r\n') ? '\r\n' : '\n';
+        const block = fernBlock(url).replaceAll('\n', nl);
+        if (FERN_BLOCK.test(text)) return text.replace(FERN_BLOCK, () => block);
+        return text.trim() ? `${block}${nl}${nl}${text}` : block;
+      }
+
+      // Puts each PR's newest Fern docs preview link at the top of its description. Returns a
+      // status note for each PR whose description changed (or, without writes, would change) or
+      // couldn't be updated. A failure never fails the slot: the next slot tries again.
+      async function syncFernPreviews(prs, write) {
+        const notes = new Map();
+        if (cfg.fernPreview === 'off') return notes;
+        for (const pr of prs) {
+          try {
+            const url = await fernPreviewURL(pr.number);
+            if (!url) continue;
+            // Read the description right before writing it, so an edit made in the meantime (yours,
+            // or CodeRabbit's summary at the bottom) isn't lost.
+            const path = `/repos/${owner}/${name}/pulls/${pr.number}`;
+            const current = (await gh(path)).body ?? '';
+            const body = withFernBlock(current, url);
+            if (body === current) continue;
+            const what = FERN_BLOCK.test(current) ? 'updated in the description' : 'added to the top of the description';
+            if (write) await gh(path, {method: 'PATCH', body: {body}});
+            notes.set(pr.number, `Fern docs preview link ${write ? '' : 'would be '}${what}`);
+          } catch (err) {
+            log(`#${pr.number}: could not update the Fern docs preview link: ${err.message}`);
+            notes.set(pr.number, 'Fern docs preview link not updated (GitHub error; the next slot tries again)');
+          }
+        }
+        return notes;
+      }
+
+      // ---------- State (an Actions variable on the fork) ----------
+
+      const [stateOwner, stateName] = cfg.stateRepo.split('/');
+      const varsPath = `/repos/${stateOwner}/${stateName}/actions/variables`;
+      const emptyState = () => ({version: 1, lastFullAt: null, prs: {}});
+
+      async function loadState() {
+        const v = await gh(`${varsPath}/${cfg.stateVar}`, {allow404: true});
+        if (!v) return {existed: false, state: emptyState()};
+        try {
+          const s = JSON.parse(v.value);
+          if (s?.version !== 1 || typeof s.prs !== 'object' || s.prs === null) throw new Error('unexpected shape');
+          return {existed: true, state: s};
+        } catch (err) {
+          log(`state variable ${cfg.stateVar} is unreadable (${err.message}); starting fresh`);
+          return {existed: true, state: emptyState()};
+        }
+      }
+
+      async function saveState(state, existed) {
+        const body = {name: cfg.stateVar, value: JSON.stringify(state)};
+        if (existed) return gh(`${varsPath}/${cfg.stateVar}`, {method: 'PATCH', body});
+        try {
+          await gh(varsPath, {method: 'POST', body});
+        } catch (err) {
+          if (!/HTTP (409|422)/.test(err.message)) throw err;
+          await gh(`${varsPath}/${cfg.stateVar}`, {method: 'PATCH', body});
+        }
+      }
+
+      // What the shepherd has been given for a PR's current head. A new head starts clean, except
+      // for the last head given to a review, which follow-up reviews start from.
+      function entryFor(state, pr) {
+        const e = state.prs[pr.number];
+        const reviewedHead = e?.reviewedHead ?? null;
+        if (e && e.head === pr.head) return {conflictHandled: !!e.conflictHandled, failuresHandled: e.failuresHandled ?? [], reviewedHead};
+        return {conflictHandled: false, failuresHandled: [], reviewedHead};
+      }
+
+      function nextState(state, prs, given, now, fullRun, advanced = new Set()) {
+        const out = {
+          version: 1,
+          lastFullAt: fullRun ? now.toISOString() : state.lastFullAt,
+          prs: {},
+          updatedAt: now.toISOString(),
+          updatedBy: hostname(),
+        };
+        for (const pr of prs) {
+          const e = entryFor(state, pr);
+          const current = new Set(pr.checks.failing.map((f) => f.key));
+          const handled = new Set(e.failuresHandled.filter((k) => current.has(k)));
+          const g = given.get(pr.number);
+          for (const f of g?.failures ?? []) handled.add(f.key);
+          const reviewedHead = g?.review || advanced.has(pr.number) ? pr.head : e.reviewedHead;
+          out.prs[pr.number] = {
+            head: pr.head,
+            conflictHandled: e.conflictHandled || !!g?.conflict,
+            failuresHandled: [...handled].sort(),
+            ...(reviewedHead ? {reviewedHead} : {}),
+          };
+        }
+        return out;
+      }
+
+      // ---------- Schedule ----------
+
+      const partsFmt = new Intl.DateTimeFormat('en-US', {
+        timeZone: cfg.tz,
+        hourCycle: 'h23',
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      const showFmt = new Intl.DateTimeFormat('en-US', {
+        timeZone: cfg.tz,
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+        timeZoneName: 'short',
+      });
+      const show = (d) => showFmt.format(d);
+
+      function localParts(d) {
+        const p = Object.fromEntries(partsFmt.formatToParts(d).map((x) => [x.type, x.value]));
+        return {weekday: WEEKDAYS[p.weekday], hour: Number(p.hour), minute: Number(p.minute)};
+      }
+
+      function isFullSlot(t) {
+        const p = localParts(new Date(t));
+        return p.minute === 0 && cfg.fullHours.includes(p.hour) && cfg.fullDays.includes(p.weekday);
+      }
+
+      // The most recent regular-run time at or before now (within the past 8 days).
+      function latestFullSlot(now) {
+        let t = Math.floor(now.getTime() / SLOT_MS) * SLOT_MS;
+        for (let i = 0; i < 8 * 24 * 4; i++, t -= SLOT_MS) if (isFullSlot(t)) return new Date(t);
+        return null;
+      }
+
+      // The first regular-run time after the current slot (within the next 8 days).
+      function nextFullSlot(now) {
+        let t = Math.floor(now.getTime() / SLOT_MS) * SLOT_MS + SLOT_MS;
+        for (let i = 0; i < 8 * 24 * 4; i++, t += SLOT_MS) if (isFullSlot(t)) return new Date(t);
+        return null;
+      }
+
+      // ---------- Decision ----------
+
+      const reviewOn = () => cfg.review === 'shadow' || cfg.review === 'live';
+
+      // Whether a PR's head needs a review: {due, kind, since}, or {due: false, note} with advance
+      // set when nothing new arrived since the last review, so the head counts as reviewed. kind
+      // is full, followup (the head builds on the last reviewed head, since) or rewritten (since
+      // is no longer in the PR's history, after a rebase).
+      //   followup:  the commits after since count, except the shepherd's own fixes.
+      //   rewritten: the PR's commits count, except copies of commits in since's history.
+      // SHEPHERD_MODE=review reviews every open PR that isn't a draft or approved (or those in
+      // SHEPHERD_REVIEW_PRS) from scratch, skipping the waiting rules.
+      async function reviewStatus(pr, e, now) {
+        if (!reviewOn()) return {due: false, note: null};
+        if (pr.isDraft) return {due: false, note: 'not reviewed while it is a draft'};
+        if (pr.reviewDecision === 'APPROVED') return {due: false, note: 'not reviewed, because it is approved'};
+        if (cfg.mode === 'review') {
+          if (cfg.reviewPRs.length && !cfg.reviewPRs.includes(pr.number)) return {due: false, note: 'not in SHEPHERD_REVIEW_PRS'};
+          return {due: true, kind: 'full'};
+        }
+        const last = e.reviewedHead;
+        if (last === pr.head) return {due: false, note: 'reviewed at this head'};
+        if (pr.mergeable === 'CONFLICTING') return {due: false, note: 'review waits until the merge conflict is resolved'};
+        if (pr.mergeable !== 'MERGEABLE') return {due: false, note: 'review waits until GitHub has computed mergeability'};
+        const age = now - Date.parse(pr.headCommittedAt);
+        if (age < cfg.reviewQuietMinutes * 60_000) {
+          return {due: false, note: `review waits until the head is ${cfg.reviewQuietMinutes} minutes old (now ${Math.max(0, Math.floor(age / 60_000))})`};
+        }
+        if (!last) return {due: true, kind: 'full'};
+        const nothingNew = (what) => ({due: false, advance: true, note: `reviewed at ${short(last)}; since then only ${what}, so this head counts as reviewed`});
+        try {
+          const {commits, total} = await prCommits(pr.number);
+          if (commits.at(-1)?.oid !== pr.head) {
+            if (total <= commits.length) return {due: false, note: 'review waits, because the head moved while its commits were read'};
+            // GitHub lists only a PR's first 250 commits, so only the newest one can be checked.
+            return pr.headIsShepherdFix ? nothingNew("the shepherd's fixes") : {due: true, kind: 'rewritten', since: last};
+          }
+          const i = commits.findIndex((c) => c.oid === last);
+          if (i >= 0) {
+            if (commits.slice(i + 1).every(isShepherdFix)) return nothingNew("the shepherd's fixes");
+            return {due: true, kind: 'followup', since: last};
+          }
+          const reviewed = await historyKeys(last);
+          if (commits.every((c) => reviewed.has(copyKey(c)))) return nothingNew('a rebase of those commits');
+          return {due: true, kind: 'rewritten', since: last};
+        } catch (err) {
+          log(`#${pr.number}: could not read the commits since the last reviewed head ${short(last)}: ${err.message}`);
+          return {due: false, note: 'review waits, because GitHub could not list its commits'};
+        }
+      }
+
+      function reviewNote(r, deferred) {
+        if (!r.due) return r.note;
+        const kind = r.kind === 'full' ? 'full review' : r.kind === 'followup' ? `follow-up since ${short(r.since)}` : `history rewritten since ${short(r.since)}`;
+        return `review due${deferred ? ` ${deferred}` : ''} (${kind})`;
+      }
+
+      function describe(pr, e, note) {
+        const conflict =
+          pr.mergeable === 'CONFLICTING'
+            ? e.conflictHandled
+              ? 'merge conflict (already given to the shepherd at this head)'
+              : 'merge conflict'
+            : pr.mergeable === 'UNKNOWN'
+              ? 'GitHub has not computed mergeability yet'
+              : 'no merge conflict';
+        const c = pr.checks;
+        const handled = new Set(e.failuresHandled);
+        const fresh = c.failing.filter((f) => !handled.has(f.key)).length;
+        let ci;
+        if (c.total === 0) ci = 'no checks yet';
+        else if (c.failing.length === 0) ci = c.pending ? `CI running (${c.pending} of ${c.total} checks pending)` : `CI passed (${c.total} checks)`;
+        else {
+          ci = `${c.failing.length} failed check${c.failing.length === 1 ? '' : 's'}`;
+          ci += fresh ? ` (${fresh} new)` : ' (already given to the shepherd)';
+          if (c.pending) ci += `, ${c.pending} still running`;
+        }
+        return `#${pr.number} (head ${short(pr.head)}${pr.isDraft ? ', draft' : ''}): ${conflict}; ${ci}${note ? `; ${note}` : ''}`;
+      }
+
+      function reviewLine(r) {
+        if (r.kind === 'full') return '  - Review it (steps C, R and S): a full review of the PR.';
+        if (r.kind === 'followup') return `  - Review it (steps C, R and S): a follow-up review of the changes since \`${r.since}\`, the last reviewed head.`;
+        return `  - Review it (steps C, R and S): its history was rewritten since \`${r.since}\`, the last reviewed head. Use git range-diff against that head to find what changed.`;
+      }
+
+      function triggerDoc(triggers, now) {
+        const next = nextFullSlot(now);
+        const reviews = triggers.some((t) => t.review);
+        const problems = triggers.some((t) => t.conflict || t.failures.length);
+        const found = problems && reviews ? 'problems and reviews' : reviews ? 'reviews' : 'problems';
+        const lines = [
+          '## Triggered run (PR watch): read first',
+          `The PR watch started this run at ${show(now)} because it found ${found} the shepherd hasn't been given yet. This is not a regular run.`,
+          '',
+        ];
+        for (const t of triggers) {
+          lines.push(`- PR #${t.pr.number} (${t.pr.url}), branch \`${clean(t.pr.branch)}\`, head \`${short(t.pr.head)}\`:`);
+          if (t.conflict) lines.push('  - It has a merge conflict with its base branch (mergeable: CONFLICTING).');
+          if (t.failures.length) {
+            lines.push(
+              t.pr.checks.pending
+                ? `  - These checks failed. ${t.pr.checks.pending} other checks are still running, but these failures are over ${cfg.ciStaleMinutes} minutes old:`
+                : '  - These checks failed, and CI on this head has finished:',
+            );
+            for (const f of t.failures) lines.push(`    - ${f.name}: ${f.result}${f.url ? ` (${f.url})` : ''}`);
+          }
+          if (t.review) lines.push(reviewLine(t.review));
+        }
+        const due = next ? `; the next one is due at ${show(next)}` : '';
+        lines.push(
+          '',
+          'Scope of this run:',
+          reviews
+            ? '- Work only on the PRs listed above, and only on what is listed for each: step A (rebase) for a merge conflict, step B (CI) for failed checks, and steps C, R and S (CodeRabbit, self-review, and the review brief) for a review. Re-triage those PRs first, because their state may have changed since the watch looked. If a problem is already gone, say so and leave it alone.'
+            : '- Work only on the PRs listed above, and only on the problems listed: step A (rebase) for a merge conflict, step B (CI) for failed checks. Re-triage those PRs first, because their state may have changed since the watch looked. If a problem is already gone, say so and leave that PR alone.',
+          reviews
+            ? `- Skip steps D-G (human reviews, approvals, codeowner pings, and age), and step C for a PR without a review. The regular runs cover them${due}.`
+            : `- Skip steps C-G (CodeRabbit, human reviews, approvals, codeowner pings, and age). The regular runs cover them${due}.`,
+          `- Every other rule below still applies, including backups, validation, the per-run limits, and signed, signed-off commits. Start the report with "Triggered by the PR watch:" and the ${found} above.`,
+          '',
+          '',
+        );
+        return lines.join('\n');
+      }
+
+      async function main() {
+        if (!cfg.token) throw new Error('GH_TOKEN is not set');
+        if (!['auto', 'full', 'review', 'check'].includes(cfg.mode)) throw new Error(`unknown SHEPHERD_MODE "${cfg.mode}"`);
+        if (!['off', 'shadow', 'live'].includes(cfg.review)) throw new Error(`unknown SHEPHERD_REVIEW "${cfg.review}"`);
+        if (cfg.mode === 'review' && !reviewOn()) throw new Error('SHEPHERD_MODE=review needs SHEPHERD_REVIEW=shadow or live');
+        if (!['on', 'off'].includes(cfg.fernPreview)) throw new Error(`unknown SHEPHERD_FERN_PREVIEW "${cfg.fernPreview}"`);
+        mkdirSync(cfg.outDir, {recursive: true});
+        const now = new Date();
+        const [prs, loaded] = await Promise.all([listPRs(), loadState()]);
+        const state = loaded.state;
+        const write = !cfg.readOnly && cfg.mode !== 'check';
+
+        // With no state yet (the first run, or after a reset), assume the regular run before this
+        // slot already happened, so a deploy or a reset doesn't start a late one.
+        const fullSlot = latestFullSlot(now);
+        const slotStart = new Date(Math.floor(now.getTime() / SLOT_MS) * SLOT_MS);
+        if (!loaded.existed && fullSlot && fullSlot < slotStart) state.lastFullAt = fullSlot.toISOString();
+        const lastFull = state.lastFullAt ? new Date(state.lastFullAt) : null;
+        const fullDue =
+          cfg.mode === 'full' ||
+          (cfg.mode !== 'review' && !!fullSlot && now - fullSlot <= cfg.fullMakeupMinutes * 60_000 && (!lastFull || lastFull < fullSlot));
+
+        // A regular run doesn't review: a review that is due waits for the next slot, so one run
+        // stays within its time limit. So does each review past the per-run cap, oldest head first.
+        const reviewOf = new Map();
+        for (const pr of prs) reviewOf.set(pr.number, await reviewStatus(pr, entryFor(state, pr), now));
+        const due = prs.filter((pr) => reviewOf.get(pr.number).due);
+        due.sort((a, b) => Date.parse(a.headCommittedAt) - Date.parse(b.headCommittedAt) || a.number - b.number);
+        const capped = new Set(due.slice(cfg.reviewMaxPerRun).map((pr) => pr.number));
+
+        // Every slot keeps the Fern docs preview links current, whatever else it does.
+        const fernNotes = await syncFernPreviews(prs, write);
+
+        const status = [];
+        const given = new Map();
+        const triggers = [];
+        for (const pr of prs) {
+          const e = entryFor(state, pr);
+          const r = reviewOf.get(pr.number);
+          const later = fullDue ? 'after this regular run' : capped.has(pr.number) ? `in a later slot (${cfg.reviewMaxPerRun} per run)` : '';
+          const notes = [reviewNote(r, later), fernNotes.get(pr.number)].filter(Boolean).join('; ');
+          status.push(`- ${describe(pr, e, notes)}`);
+          const review = r.due && !capped.has(pr.number) ? r : null;
+          if (cfg.mode === 'review') {
+            if (review) {
+              triggers.push({pr, conflict: false, failures: [], review});
+              given.set(pr.number, {review: true});
+            }
+            continue;
+          }
+          const handled = new Set(e.failuresHandled);
+          const fresh = pr.checks.failing.filter((f) => !handled.has(f.key));
+          const stale = fresh.some((f) => now - Date.parse(f.at) >= cfg.ciStaleMinutes * 60_000);
+          const t = {
+            pr,
+            conflict: pr.mergeable === 'CONFLICTING' && !e.conflictHandled,
+            failures: fresh.length && (pr.checks.pending === 0 || stale) ? fresh : [],
+            review,
+          };
+          if (fullDue) given.set(pr.number, {conflict: pr.mergeable === 'CONFLICTING', failures: pr.checks.failing});
+          else if (t.conflict || t.failures.length || t.review) {
+            triggers.push(t);
+            given.set(pr.number, {conflict: t.conflict, failures: t.failures, review: !!t.review});
+          }
+        }
+
+        let mode = 'none';
+        if (fullDue) mode = 'full';
+        else if (triggers.length) mode = 'watch';
+
+        const head = cfg.mode === 'check' ? `PR watch check at ${show(now)}; nothing was written` : `PR watch at ${show(now)}`;
+        const starting = cfg.mode === 'check' ? 'would start' : 'is starting';
+        const problems = triggers.some((t) => t.conflict || t.failures.length);
+        const reviewCount = triggers.filter((t) => t.review).length;
+        const reviewsDue = reviewCount === 1 ? 'a review is due' : `${reviewCount} reviews are due`;
+        const out = [];
+        if (mode === 'full') out.push(`${head}: regular run${cfg.mode === 'full' ? ' (forced)' : ` for the ${show(fullSlot)} slot`}.`);
+        else if (mode === 'watch' && cfg.mode === 'review') out.push(`${head}: review requested (SHEPHERD_MODE=review), so the shepherd ${starting} a review run.`);
+        else if (mode === 'watch' && !reviewCount) out.push(`${head}: new problems, so the shepherd ${starting} a run scoped to them.`);
+        else if (mode === 'watch' && !problems) out.push(`${head}: ${reviewsDue}, so the shepherd ${starting} a review run.`);
+        else if (mode === 'watch') out.push(`${head}: new problems, and ${reviewsDue}, so the shepherd ${starting} a run scoped to them.`);
+        else if (cfg.mode === 'review') out.push(`${head}: review requested, but no open PR can be reviewed, so the shepherd didn't run.`);
+        else out.push(`${head}: nothing new, so the shepherd ${cfg.mode === 'check' ? 'would not run' : "didn't run"}.`);
+        out.push(...(status.length ? status : [`- No open PRs by ${cfg.author} in ${cfg.repo}.`]));
+
+        // A head with nothing new since its last review is recorded as reviewed, even in a slot
+        // that starts no run, so later rebases match its commits and its commits aren't read again.
+        const advanced = new Set(prs.filter((pr) => reviewOf.get(pr.number).advance).map((pr) => pr.number));
+        if ((mode !== 'none' || advanced.size) && write) {
+          try {
+            await saveState(nextState(state, prs, given, now, mode === 'full', advanced), loaded.existed);
+          } catch (err) {
+            // A triggered run that can't be recorded would start again every slot, so don't
+            // start it. A regular run goes ahead anyway, and a review head is recorded next time.
+            if (mode === 'watch') throw new Error(`could not record the trigger in ${cfg.stateRepo} variable ${cfg.stateVar}: ${err.message}`);
+            log(`could not record the ${mode === 'full' ? 'regular run' : 'reviewed heads'} in ${cfg.stateRepo} variable ${cfg.stateVar}: ${err.message}`);
+          }
+        }
+
+        const doc = mode === 'watch' ? triggerDoc(triggers, now) : '';
+        if (cfg.mode === 'check') {
+          if (doc) out.push('', 'Prompt section the run would get:', '', doc.trimEnd());
+          mode = 'none';
+        }
+        writeFileSync(join(cfg.outDir, 'trigger.md'), doc);
+        writeFileSync(join(cfg.outDir, 'mode'), mode);
+        process.stdout.write(`${out.join('\n')}\n`);
+      }
+
+      main().catch((err) => {
+        log(`FAILED: ${err.message}`);
+        process.exit(1);
+      });
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: '3'
+      memory: 6Gi
+  execution:
+    nodeSelector:
+      agentpool: nodepool1
+  timeout: 90m
+  retryPolicy:
+    maxRetries: 0
